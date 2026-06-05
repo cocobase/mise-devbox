@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+missing=0
+
+print_mise_install() {
+  cat <<'EOF'
+
+mise is required but was not found.
+
+Install mise on macOS:
+  brew install mise
+
+Or install with the official script:
+  curl https://mise.run | sh
+
+After installation, activate it in your shell. For zsh:
+  echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
+  exec zsh
+
+Verify:
+  mise --version
+EOF
+}
+
+print_docker_install() {
+  cat <<'EOF'
+
+Docker is required but was not found.
+
+Option 1: install Docker Desktop on macOS:
+  brew install --cask docker
+
+Or download it from:
+  https://www.docker.com/products/docker-desktop/
+
+Option 2: install Colima with Docker CLI:
+  brew install colima docker
+  colima start --runtime docker --cpu 4 --memory 8
+
+After installation:
+  1. Start Docker Desktop or Colima.
+  2. Wait until the Docker daemon is running.
+  3. Verify:
+     docker version
+EOF
+}
+
+print_docker_daemon_help() {
+  if command -v colima >/dev/null 2>&1; then
+    cat <<'EOF'
+
+Docker CLI is installed, but Docker daemon is not reachable.
+
+Colima is installed. Start Colima's Docker runtime:
+  colima start --runtime docker --cpu 4 --memory 8
+
+Then verify:
+  docker version
+EOF
+  else
+    cat <<'EOF'
+
+Docker CLI is installed, but Docker daemon is not reachable.
+
+Start one Docker runtime:
+
+Option 1: Docker Desktop
+  open -a Docker
+
+Option 2: Colima
+  brew install colima
+  colima start --runtime docker --cpu 4 --memory 8
+
+Then verify:
+  docker version
+EOF
+  fi
+}
+
+if ! command -v mise >/dev/null 2>&1; then
+  print_mise_install
+  missing=1
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  print_docker_install
+  missing=1
+elif ! docker info >/dev/null 2>&1; then
+  print_docker_daemon_help
+  missing=1
+fi
+
+if [[ "${missing}" -ne 0 ]]; then
+  exit 1
+fi
+
+printf 'Host toolchain checks passed.\n'
+printf 'mise: %s\n' "$(mise --version)"
+printf 'docker: %s\n' "$(docker --version)"
