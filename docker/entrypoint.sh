@@ -30,14 +30,24 @@ export PATH="/opt/mise/shims:/usr/local/bin:${PATH}"
 
 for config_file in /workspace/.mise.toml /workspace/mise.toml; do
   if [[ -f "${config_file}" ]]; then
-    sudo --preserve-env=MISE_DATA_DIR,MISE_CONFIG_DIR,MISE_CACHE_DIR,PATH \
+    sudo \
       --set-home \
       --user "#${HOST_UID}" \
+      env \
+      "MISE_DATA_DIR=${MISE_DATA_DIR}" \
+      "MISE_CONFIG_DIR=${MISE_CONFIG_DIR}" \
+      "MISE_CACHE_DIR=${MISE_CACHE_DIR}" \
+      "PATH=${PATH}" \
       mise trust "${config_file}" >/dev/null 2>&1 || true
   fi
 done
 
-exec sudo --preserve-env=MISE_DATA_DIR,MISE_CONFIG_DIR,MISE_CACHE_DIR,PATH \
+exec sudo \
   --set-home \
   --user "#${HOST_UID}" \
+  env \
+  "MISE_DATA_DIR=${MISE_DATA_DIR}" \
+  "MISE_CONFIG_DIR=${MISE_CONFIG_DIR}" \
+  "MISE_CACHE_DIR=${MISE_CACHE_DIR}" \
+  "PATH=${PATH}" \
   "$@"

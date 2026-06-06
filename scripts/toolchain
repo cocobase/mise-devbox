@@ -77,7 +77,7 @@ case "${command}" in
     project_dir="$(abs_path "${1:-.}")"
     docker_args "${project_dir}"
     exec docker run "${DOCKER_ARGS[@]}" bash -lc \
-      'printf "mise: "; mise --version; printf "python: "; python --version; printf "node: "; node --version; printf "pnpm: "; pnpm --version; printf "uv: "; uv --version; printf "git: "; git --version'
+      'printf "mise: "; mise --version; printf "python: "; python --version; printf "node: "; node --version; printf "pnpm: "; pnpm --version; printf "uv: "; uv --version; printf "git: "; git --version; printf "gh: "; gh --version | head -n 1'
     ;;
   ""|-h|--help|help)
     usage
