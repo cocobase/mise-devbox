@@ -1,11 +1,31 @@
 [env]
+_.file = ".env"
 TOOLCHAIN_IMAGE = "ai-dev-toolchain:latest"
+REDIS_URL = "redis://agent-redis:6379/0"
+QDRANT_HOST = "agent-qdrant"
+QDRANT_PORT = "6333"
 
 [tools]
 python = "3.12.13"
 node = "22.22.3"
 pnpm = "11.2.2"
 uv = "0.11.16"
+
+[tasks.setup]
+description = "Install tools and prepare development environment"
+run = "mise install && uv venv && pnpm install"
+
+[tasks.up]
+description = "Start infrastructure services (Redis, Qdrant)"
+run = "docker compose up -d"
+
+[tasks.down]
+description = "Stop infrastructure services"
+run = "docker compose down"
+
+[tasks.logs]
+description = "Tail logs from infrastructure services"
+run = "docker compose logs -f"
 
 [tasks.build]
 description = "Build the Docker image that contains mise, python, node, pnpm, uv, git, and gh"

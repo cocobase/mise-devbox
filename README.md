@@ -13,6 +13,7 @@
 - [直接使用 Docker image](#直接使用-docker-image)
 - [`/workspace` 目录说明](#workspace-目录说明)
 - [常用任务](#常用任务)
+- [AI-Agent Harness (新)](#ai-agent-harness-新)
 - [项目结构](#项目结构)
 - [设计说明](#设计说明)
 - [常见问题](#常见问题)
@@ -259,10 +260,53 @@ mise run check
 mise run build
 mise run versions
 mise run shell
-mise run shell -- ~/project/dev-tool
-mise run run -- . python --version
+mise run setup    # 安装本机/容器所需依赖
+mise run up       # 启动 Redis, Qdrant 基础设施
+mise run down     # 停止基础设施
+mise run logs     # 查看基础设施日志
 mise run clean
 ```
+
+## AI-Agent Harness (新)
+
+项目现在支持一个最小化的 AI-Agent 开发环境 (Harness)。
+
+### 1. 基础设施服务
+通过 `docker-compose.yml` 提供了以下服务：
+- **Redis**: 用于 Agent 的短期记忆和缓存。
+- **Qdrant**: 用于向量存储和知识库 (RAG)。
+
+启动基础设施：
+```bash
+mise run up
+```
+
+### 2. 工具链集成
+`scripts/toolchain` 已更新，启动时会自动加入 `agent-network` 网络。
+这意味着你在容器内可以通过服务名直接访问基础设施：
+- Redis: `agent-redis:6379`
+- Qdrant: `agent-qdrant:6333`
+
+### 3. 开发起步 (Python/Node.js)
+项目根目录已配置 `pyproject.toml` (uv) 和 `package.json` (pnpm)，包含常用的 AI 库 (LangChain, Qdrant client, Redis client)。
+
+在容器内初始化：
+```bash
+mise run setup
+```
+
+### 4. 连通性测试
+在容器内运行 smoke test 验证环境：
+```bash
+python smoke_test.py
+```
+
+### 5. API Key 安全注入
+为了保护敏感信息，我们采用以下流程：
+1. **复制模板**：在根目录执行 `cp .env.example .env`。
+2. **填写 Key**：编辑 `.env` 文件，填入你的 OpenAI/Anthropic 等 API Key（此文件已被 `.gitignore` 忽略）。
+3. **自动加载**：`mise` 会自动加载 `.env` 中的变量。
+4. **容器透传**：`scripts/toolchain` 会自动识别并透传以 `_API_KEY` 结尾或 `OPENAI_`、`GOOGLE_` 等开头的环境变量到容器内部。
 
 ## 项目结构
 

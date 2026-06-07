@@ -47,6 +47,25 @@ docker_args() {
     "-w" "/workspace"
   )
 
+  # Pass API keys and common AI env vars from host to container
+  # We whitelist common patterns to avoid leaking unrelated host env vars
+  for env_var in $(env | grep -E '^(OPENAI|ANTHROPIC|GOOGLE|LANGCHAIN|AZURE|MISTRAL|GROQ|COHERE|HF)_|(_API_KEY|_KEY)='); do
+    key=$(echo "${env_var}" | cut -d'=' -f1)
+    DOCKER_ARGS+=("-e" "${key}")
+  done
+
+  # Also pass infra vars if they are set in the host environment (e.g. by mise)
+  for key in REDIS_URL QDRANT_HOST QDRANT_PORT; do
+    if [[ -n "${!key:-}" ]]; then
+      DOCKER_ARGS+=("-e" "${key}")
+    fi
+  done
+
+  # Check if agent-network exists and join it
+  if docker network inspect agent-network >/dev/null 2>&1; then
+    DOCKER_ARGS+=("--network" "agent-network")
+  fi
+
   if [[ -t 0 && -t 1 ]]; then
     DOCKER_ARGS+=("-it")
   fi
