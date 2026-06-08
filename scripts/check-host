@@ -3,6 +3,12 @@ set -euo pipefail
 
 missing=0
 
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
 print_mise_install() {
   cat <<'EOF'
 
@@ -78,23 +84,39 @@ EOF
   fi
 }
 
+# Check Homebrew (info only, non-blocking)
+if ! command -v brew >/dev/null 2>&1; then
+  printf "${YELLOW}⚠️  Homebrew not found. Recommended installation:${NC}\n"
+  printf '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"\n\n'
+else
+  printf "${GREEN}✅ homebrew${NC}: found\n"
+fi
+
+# Check mise
 if ! command -v mise >/dev/null 2>&1; then
   print_mise_install
   missing=1
+else
+  mise_version=$(mise --version 2>/dev/null || echo "unknown")
+  printf "${GREEN}✅ mise${NC}: %s\n" "${mise_version}"
 fi
 
+# Check Docker CLI
 if ! command -v docker >/dev/null 2>&1; then
   print_docker_install
   missing=1
+# Check Docker Daemon
 elif ! docker info >/dev/null 2>&1; then
   print_docker_daemon_help
   missing=1
+else
+  docker_version=$(docker --version 2>/dev/null || echo "unknown")
+  printf "${GREEN}✅ docker${NC}: %s\n" "${docker_version}"
 fi
 
 if [[ "${missing}" -ne 0 ]]; then
+  printf "\n${RED}❌ Host checks failed. Please install the missing components above.${NC}\n"
   exit 1
 fi
 
-printf 'Host toolchain checks passed.\n'
-printf 'mise: %s\n' "$(mise --version)"
-printf 'docker: %s\n' "$(docker --version)"
+printf '\n🎉 Host toolchain checks passed.\n'

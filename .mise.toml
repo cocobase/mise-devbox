@@ -16,41 +16,103 @@ description = "Install tools and prepare development environment"
 run = "mise install && uv venv && pnpm install"
 
 [tasks.up]
-description = "Start infrastructure services (Redis, Qdrant)"
-run = "docker compose up -d"
+description = "Start the full AI-Agent harness: check host, start infra, build image if needed, and enter container shell"
+run = """
+start_time=$(date +%s)
+
+echo "[up] === Phase 1/4: Pre-flight checks ==="
+mise run check || { echo "[up] ❌ Host checks failed"; exit 1; }
+
+echo "[up] === Phase 2/4: Starting infrastructure services ==="
+docker compose up -d
+
+echo "[up] === Phase 3/4: Image validation ==="
+if ! docker image inspect "${TOOLCHAIN_IMAGE}" >/dev/null 2>&1; then
+  echo "[up] ⚠️  Image ${TOOLCHAIN_IMAGE} not found. Triggering build (first build may take 1–3 minutes)..."
+  mise run build
+else
+  echo "[up] ✅ Image ${TOOLCHAIN_IMAGE} found. Skipping build."
+fi
+
+end_time=$(date +%s)
+elapsed=$((end_time - start_time))
+echo "[up] === Phase 4/4: Entering toolchain container ==="
+echo "[up] ⏱️  Total time to shell: ${elapsed}s (cold-start includes build time; hot-start target: ≤5s)"
+scripts/toolchain shell
+"""
 
 [tasks.down]
-description = "Stop infrastructure services"
-run = "docker compose down"
+description = "Stop infrastructure and remove all toolchain containers (preserves data volumes and network)"
+run = """
+echo "[down] Stopping infrastructure services..."
+docker compose down
+
+echo "[down] Stopping and removing toolchain containers..."
+if docker ps -q --filter "ancestor=${TOOLCHAIN_IMAGE}" | grep -q .; then
+  docker ps -q --filter "ancestor=${TOOLCHAIN_IMAGE}" | xargs docker stop >/dev/null 2>&1 || true
+fi
+if docker ps -aq --filter "ancestor=${TOOLCHAIN_IMAGE}" | grep -q .; then
+  docker ps -aq --filter "ancestor=${TOOLCHAIN_IMAGE}" | xargs docker rm >/dev/null 2>&1 || true
+fi
+
+echo "[down] ✅ Done. Data volumes (qdrant_data) and agent-network preserved."
+"""
+
+[tasks.clean]
+description = "Deep clean: remove volumes, network, and toolchain image"
+run = """
+echo "[clean] Stopping infrastructure and removing volumes..."
+docker compose down --volumes
+
+echo "[clean] Removing toolchain containers..."
+if docker ps -aq --filter "ancestor=${TOOLCHAIN_IMAGE}" | grep -q .; then
+  docker ps -aq --filter "ancestor=${TOOLCHAIN_IMAGE}" | xargs docker rm -f >/dev/null 2>&1 || true
+fi
+
+echo "[clean] Removing toolchain image..."
+docker image rm "${TOOLCHAIN_IMAGE}" >/dev/null 2>&1 || true
+
+echo "[clean] Verifying no leftover containers..."
+if [[ -n "$(docker ps -aq 2>/dev/null)" ]]; then
+  echo "[clean] ⚠️  Some containers still exist:"
+  docker ps -a
+else
+  echo "[clean] ✅ No containers remaining."
+fi
+
+echo "[clean] Verifying networks..."
+if docker network ls | grep -q "agent-network"; then
+  docker network rm agent-network >/dev/null 2>&1 || true
+  echo "[clean] ✅ agent-network removed."
+else
+  echo "[clean] ✅ No agent-network found."
+fi
+"""
 
 [tasks.logs]
-description = "Tail logs from infrastructure services"
+description = "Tail logs from infrastructure services (Redis, Qdrant)"
 run = "docker compose logs -f"
+
+[tasks.agent-logs]
+description = "Tail agent logs from the mounted workspace"
+run = "tail -f logs/agent.log 2>/dev/null || echo 'No logs/agent.log found. Logs are written inside the container to /workspace/logs/agent.log'"
 
 [tasks.build]
 description = "Build the Docker image that contains mise, python, node, pnpm, uv, git, and gh"
-depends = ["check"]
 run = "docker build -t ${TOOLCHAIN_IMAGE} -f docker/Dockerfile ."
 
 [tasks.check]
-description = "Check whether mise and Docker are installed and Docker Desktop is running"
+description = "Check whether mise, Docker, and optional Homebrew are installed and Docker daemon is running"
 run = "scripts/check-host"
 
 [tasks.shell]
 description = "Open an interactive shell inside the toolchain container. Optional arg: project directory"
-depends = ["check"]
 run = "scripts/toolchain shell"
 
 [tasks.run]
 description = "Run a command inside the toolchain container. Usage: mise run run -- <project_dir> <command...>"
-depends = ["check"]
 run = "scripts/toolchain run"
 
 [tasks.versions]
 description = "Print tool versions from inside the toolchain container"
-depends = ["check"]
 run = "scripts/toolchain versions ."
-
-[tasks.clean]
-description = "Remove the local toolchain Docker image"
-run = "docker image rm ${TOOLCHAIN_IMAGE}"

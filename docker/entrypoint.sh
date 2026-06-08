@@ -5,11 +5,30 @@ HOST_UID="${HOST_UID:-1000}"
 HOST_GID="${HOST_GID:-1000}"
 HOST_USER="${HOST_USER:-developer}"
 
-if ! getent group "${HOST_GID}" >/dev/null 2>&1; then
-  groupadd --gid "${HOST_GID}" "${HOST_USER}" >/dev/null 2>&1 || true
-fi
+# --- Fast path: skip useradd/groupadd if the exact user already exists ---
+if id -u "${HOST_USER}" >/dev/null 2>&1; then
+  existing_uid="$(id -u "${HOST_USER}")"
+  existing_gid="$(id -g "${HOST_USER}")"
+  if [[ "${existing_uid}" == "${HOST_UID}" ]] && [[ "${existing_gid}" == "${HOST_GID}" ]]; then
+    # User already matches; skip creation entirely
+    :
+  else
+    # Name collision with different UID/GID: create a fallback user
+    HOST_USER="dev${HOST_UID}"
+    useradd \
+      --uid "${HOST_UID}" \
+      --gid "${HOST_GID}" \
+      --create-home \
+      --shell /bin/bash \
+      "${HOST_USER}" >/dev/null 2>&1 || true
+  fi
+else
+  # Ensure group exists
+  if ! getent group "${HOST_GID}" >/dev/null 2>&1; then
+    groupadd --gid "${HOST_GID}" "${HOST_USER}" >/dev/null 2>&1 || true
+  fi
 
-if ! id -u "${HOST_USER}" >/dev/null 2>&1; then
+  # Create user
   useradd \
     --uid "${HOST_UID}" \
     --gid "${HOST_GID}" \

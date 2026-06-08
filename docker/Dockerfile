@@ -6,6 +6,7 @@ ENV MISE_DATA_DIR=/opt/mise
 ENV MISE_CONFIG_DIR=/opt/mise-config
 ENV MISE_CACHE_DIR=/opt/mise-cache
 ENV MISE_YES=1
+ENV MISE_HTTP_TIMEOUT=120
 ENV PATH="/opt/mise/shims:/usr/local/bin:${PATH}"
 
 RUN apt-get update \
@@ -52,7 +53,7 @@ RUN /root/.local/bin/mise trust /opt/toolchain/.mise.toml \
     && /root/.local/bin/mise trust /opt/mise-config/config.toml \
     && /root/.local/bin/mise install \
     && /root/.local/bin/mise reshim \
-    && chmod -R a+rX /opt/mise \
+    && chmod -R a+rwx /opt/mise \
     && chmod -R a+rwX /opt/mise-config /opt/mise-cache
 
 COPY docker/entrypoint.sh /usr/local/bin/toolchain-entrypoint
