@@ -1,12 +1,14 @@
 FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG GH_VERSION=2.93.0
+ARG GH_ARCH=arm64
 
 ENV MISE_DATA_DIR=/opt/mise
 ENV MISE_CONFIG_DIR=/opt/mise-config
 ENV MISE_CACHE_DIR=/opt/mise-cache
 ENV MISE_YES=1
-ENV MISE_HTTP_TIMEOUT=120
+ENV MISE_HTTP_TIMEOUT=300
 ENV PATH="/opt/mise/shims:/usr/local/bin:${PATH}"
 
 RUN apt-get update \
@@ -29,16 +31,12 @@ RUN apt-get update \
         sudo \
     && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p -m 755 /etc/apt/keyrings \
-    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-        -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-    && mkdir -p -m 755 /etc/apt/sources.list.d \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-        > /etc/apt/sources.list.d/github-cli.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends gh \
-    && rm -rf /var/lib/apt/lists/*
+# Install gh CLI directly from GitHub release (faster than apt repo in some regions)
+RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz" \
+    | tar -xz -C /tmp \
+    && install -m 755 /tmp/gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh /usr/local/bin/gh \
+    && rm -rf /tmp/gh_* \
+    && gh --version
 
 RUN curl https://mise.run | sh \
     && cp /root/.local/bin/mise /usr/local/bin/mise \
