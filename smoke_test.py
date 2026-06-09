@@ -19,6 +19,18 @@ import time
 import tomllib
 from pathlib import Path
 
+# Detect docker compose command (v2 plugin vs v1 standalone)
+def detect_docker_compose():
+    result = subprocess.run("docker compose version", shell=True, capture_output=True)
+    if result.returncode == 0:
+        return "docker compose"
+    result = subprocess.run("docker-compose version", shell=True, capture_output=True)
+    if result.returncode == 0:
+        return "docker-compose"
+    raise RuntimeError("docker compose is required but not found")
+
+DOCKER_COMPOSE = detect_docker_compose()
+
 # Configuration
 IMAGE_NAME = "ai-dev-toolchain:latest"
 NETWORK_NAME = "agent-network"
@@ -123,7 +135,7 @@ def test_03_down_removes_containers():
     print("\n[TEST 03] Standard down removes all containers")
 
     # Ensure infra is up so we have something to stop
-    run("docker compose up -d", check=False)
+    run(f"{DOCKER_COMPOSE} up -d", check=False)
 
     # Run down
     run("mise run down", check=False)
@@ -145,7 +157,7 @@ def test_04_down_preserves_volume():
     print("\n[TEST 04] Standard down preserves qdrant_data volume")
 
     # Ensure infra is up
-    run("docker compose up -d", check=False)
+    run(f"{DOCKER_COMPOSE} up -d", check=False)
 
     # Run down
     run("mise run down", check=False)
@@ -165,7 +177,7 @@ def test_05_clean_removes_network_and_image():
     print("\n[TEST 05] Deep clean removes network and image")
 
     # First bring up infra to ensure network exists
-    run("docker compose up -d", check=False)
+    run(f"{DOCKER_COMPOSE} up -d", check=False)
 
     # Run clean
     run("mise run clean", check=False)
@@ -201,7 +213,7 @@ def test_06_hot_start_timing():
         print(f"  ⏭️  Skipping: {IMAGE_NAME} not built yet. Run 'mise run build' first.")
         return None  # Skip
 
-    run("docker compose up -d", check=False)
+    run(f"{DOCKER_COMPOSE} up -d", check=False)
 
     # We can't actually run 'mise run up' because it blocks.
     # Instead, measure the equivalent non-blocking steps:
