@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE="${TOOLCHAIN_IMAGE:-ai-dev-toolchain:latest}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
 
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+IMAGE="${TOOLCHAIN_IMAGE}"
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
 usage() {
   cat <<'USAGE'
 Usage:
@@ -23,22 +33,17 @@ abs_path() {
   if [[ ! -e "${target}" ]]; then
     mkdir -p "${target}"
   fi
-
   cd "${target}" >/dev/null 2>&1
   pwd -P
 }
 
-docker_args() {
+# Add core docker run arguments (user, workspace mount, etc.)
+add_core_args() {
   local project_dir="$1"
-  local uid
-  local gid
-  local user
-  local home
-
+  local uid gid user
   uid="$(id -u)"
   gid="$(id -g)"
   user="$(id -un)"
-  home="${HOME}"
 
   DOCKER_ARGS=(
     "--rm"
@@ -48,8 +53,11 @@ docker_args() {
     "-v" "${project_dir}:/workspace"
     "-w" "/workspace"
   )
+}
 
-  # --- 2.3 动态环境注入：显式白名单模式 ---
+# Add whitelisted environment variables for AI services and infrastructure.
+add_env_args() {
+  local key
   for key in $(compgen -v); do
     if [[ -n "${!key:-}" ]]; then
       case "${key}" in
@@ -60,65 +68,88 @@ docker_args() {
     fi
   done
 
-  # 基础设施变量透传
   for key in REDIS_URL QDRANT_HOST QDRANT_PORT; do
     if [[ -n "${!key:-}" ]]; then
       DOCKER_ARGS+=("-e" "${key}")
     fi
   done
+}
 
-  # --- 4.2 身份认证透传 ---
-  # Git config
+# Add identity/auth mounts: git, GitHub CLI, SSH agent, GPG.
+add_auth_mounts() {
+  local user home
+  user="$(id -un)"
+  home="${HOME}"
+
   if [[ -f "${home}/.gitconfig" ]]; then
     DOCKER_ARGS+=("-v" "${home}/.gitconfig:/home/${user}/.gitconfig:ro")
   fi
 
-  # GitHub CLI config
   if [[ -d "${home}/.config/gh" ]]; then
     DOCKER_ARGS+=("-v" "${home}/.config/gh:/home/${user}/.config/gh:ro")
   fi
 
-  # SSH agent
   if [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "${SSH_AUTH_SOCK}" ]]; then
     DOCKER_ARGS+=("-e" "SSH_AUTH_SOCK=${SSH_AUTH_SOCK}")
     DOCKER_ARGS+=("-v" "${SSH_AUTH_SOCK}:${SSH_AUTH_SOCK}:ro")
   fi
 
-  # GPG
   if [[ -d "${home}/.gnupg" ]]; then
     DOCKER_ARGS+=("-v" "${home}/.gnupg:/home/${user}/.gnupg")
   fi
+}
 
-  # --- 4.3 缓存挂载优化 ---
-  # pnpm cache
+# Add tool cache mounts for pnpm and uv.
+add_cache_mounts() {
+  local user home
+  user="$(id -un)"
+  home="${HOME}"
+
   if [[ -d "${home}/.local/share/pnpm" ]]; then
     DOCKER_ARGS+=("-v" "${home}/.local/share/pnpm:/home/${user}/.local/share/pnpm")
   fi
 
-  # uv cache
   if [[ -d "${home}/.cache/uv" ]]; then
     DOCKER_ARGS+=("-v" "${home}/.cache/uv:/home/${user}/.cache/uv")
   fi
+}
 
-  # Check if agent-network exists and join it
-  if docker network inspect agent-network >/dev/null 2>&1; then
-    DOCKER_ARGS+=("--network" "agent-network")
+# Add network attachment if agent-network exists.
+add_network_arg() {
+  if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
+    DOCKER_ARGS+=("--network" "${NETWORK_NAME}")
   fi
+}
 
+# Add interactive TTY flags when running in a terminal.
+add_tty_args() {
   if [[ -t 0 && -t 1 ]]; then
     DOCKER_ARGS+=("-it")
   fi
+}
 
+# Build the full docker args array.
+build_docker_args() {
+  local project_dir="$1"
+  add_core_args "${project_dir}"
+  add_env_args
+  add_auth_mounts
+  add_cache_mounts
+  add_network_arg
+  add_tty_args
   DOCKER_ARGS+=("${IMAGE}")
 }
 
+# -----------------------------------------------------------------------------
+# Main dispatcher
+# -----------------------------------------------------------------------------
 command="${1:-}"
 shift || true
 
 case "${command}" in
   shell)
     project_dir="$(abs_path "${1:-.}")"
-    docker_args "${project_dir}"
+    build_docker_args "${project_dir}"
     exec docker run "${DOCKER_ARGS[@]}" bash
     ;;
   run)
@@ -128,12 +159,12 @@ case "${command}" in
     fi
     project_dir="$(abs_path "$1")"
     shift
-    docker_args "${project_dir}"
+    build_docker_args "${project_dir}"
     exec docker run "${DOCKER_ARGS[@]}" "$@"
     ;;
   versions)
     project_dir="$(abs_path "${1:-.}")"
-    docker_args "${project_dir}"
+    build_docker_args "${project_dir}"
     exec docker run "${DOCKER_ARGS[@]}" bash -lc \
       'printf "mise: "; mise --version; printf "python: "; python --version; printf "node: "; node --version; printf "pnpm: "; pnpm --version; printf "uv: "; uv --version; printf "git: "; git --version; printf "gh: "; gh --version | head -n 1'
     ;;

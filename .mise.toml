@@ -18,23 +18,13 @@ run = "mise install && uv venv && pnpm install"
 [tasks.up]
 description = "Start the full AI-Agent harness: check host, start infra, build image if needed, and enter container shell"
 run = """
-# Detect docker compose command
-if docker compose version >/dev/null 2>&1; then
-  DOCKER_COMPOSE="docker compose"
-elif docker-compose version >/dev/null 2>&1; then
-  DOCKER_COMPOSE="docker-compose"
-else
-  echo "❌ docker compose is required but not found"
-  exit 1
-fi
-
 start_time=$(date +%s)
 
 echo "[up] === Phase 1/4: Pre-flight checks ==="
 mise run check || { echo "[up] ❌ Host checks failed"; exit 1; }
 
 echo "[up] === Phase 2/4: Starting infrastructure services ==="
-${DOCKER_COMPOSE} up -d
+scripts/compose up -d
 
 echo "[up] === Phase 3/4: Image validation ==="
 if ! docker image inspect "${TOOLCHAIN_IMAGE}" >/dev/null 2>&1; then
@@ -55,15 +45,7 @@ scripts/toolchain shell
 description = "Stop infrastructure and remove all toolchain containers (preserves data volumes and network)"
 run = """
 echo "[down] Stopping infrastructure services..."
-if docker compose version >/dev/null 2>&1; then
-  DOCKER_COMPOSE="docker compose"
-elif docker-compose version >/dev/null 2>&1; then
-  DOCKER_COMPOSE="docker-compose"
-else
-  echo "❌ docker compose is required but not found"
-  exit 1
-fi
-${DOCKER_COMPOSE} down
+scripts/compose down
 
 echo "[down] Stopping and removing toolchain containers..."
 if docker ps -q --filter "ancestor=${TOOLCHAIN_IMAGE}" | grep -q .; then
@@ -80,15 +62,7 @@ echo "[down] ✅ Done. Data volumes (qdrant_data) and agent-network preserved."
 description = "Deep clean: remove volumes, network, and toolchain image"
 run = """
 echo "[clean] Stopping infrastructure and removing volumes..."
-if docker compose version >/dev/null 2>&1; then
-  DOCKER_COMPOSE="docker compose"
-elif docker-compose version >/dev/null 2>&1; then
-  DOCKER_COMPOSE="docker-compose"
-else
-  echo "❌ docker compose is required but not found"
-  exit 1
-fi
-${DOCKER_COMPOSE} down --volumes
+scripts/compose down --volumes
 
 echo "[clean] Removing toolchain containers..."
 if docker ps -aq --filter "ancestor=${TOOLCHAIN_IMAGE}" | grep -q .; then
@@ -117,17 +91,7 @@ fi
 
 [tasks.logs]
 description = "Tail logs from infrastructure services (Redis, Qdrant)"
-run = """
-if docker compose version >/dev/null 2>&1; then
-  DOCKER_COMPOSE="docker compose"
-elif docker-compose version >/dev/null 2>&1; then
-  DOCKER_COMPOSE="docker-compose"
-else
-  echo "❌ docker compose is required but not found"
-  exit 1
-fi
-${DOCKER_COMPOSE} logs -f
-"""
+run = "scripts/compose logs -f"
 
 [tasks.agent-logs]
 description = "Tail agent logs from the mounted workspace"
@@ -138,7 +102,7 @@ description = "Build the Docker image that contains mise, python, node, pnpm, uv
 run = "docker build -t ${TOOLCHAIN_IMAGE} -f docker/Dockerfile ."
 
 [tasks.check]
-description = "Check whether mise, Docker, and optional Homebrew are installed and Docker daemon is running"
+description = "Check whether mise, Docker, docker-compose, and optional Homebrew are installed and Docker daemon is running"
 run = "scripts/check-host"
 
 [tasks.shell]

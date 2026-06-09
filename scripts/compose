@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Unified docker compose wrapper.
+# Automatically detects and uses either `docker compose` (v2 plugin) or
+# `docker-compose` (v1 standalone) depending on what is installed.
+#
+# Usage:
+#   scripts/compose up -d
+#   scripts/compose down --volumes
+#   scripts/compose logs -f
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+
+COMPOSE_CMD="$(require_compose_cmd)"
+
+# shellcheck disable=SC2086
+exec ${COMPOSE_CMD} "$@"

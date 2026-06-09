@@ -42,6 +42,12 @@ chown -R "${HOST_UID}:${HOST_GID}" /workspace 2>/dev/null || true
 mkdir -p /opt/mise-config /opt/mise-cache
 chmod -R a+rwX /opt/mise-config /opt/mise-cache 2>/dev/null || true
 
+# Ensure the user home directory is owned by the host user so tools like mise
+# can write config/cache files under ~/.local.
+user_home="/home/${HOST_USER}"
+mkdir -p "${user_home}"
+chown -R "${HOST_UID}:${HOST_GID}" "${user_home}" 2>/dev/null || true
+
 export MISE_DATA_DIR=/opt/mise
 export MISE_CONFIG_DIR=/opt/mise-config
 export MISE_CACHE_DIR=/opt/mise-cache
