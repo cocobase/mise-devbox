@@ -114,6 +114,32 @@ else
   printf "${GREEN}✅ docker${NC}: %s\n" "${docker_version}"
 fi
 
+# Check docker compose (v2 plugin or v1 standalone)
+if docker compose version >/dev/null 2>&1; then
+  compose_version=$(docker compose version --short 2>/dev/null || echo "v2")
+  printf "${GREEN}✅ docker compose${NC}: %s\n" "${compose_version}"
+elif docker-compose version >/dev/null 2>&1; then
+  compose_version=$(docker-compose version --short 2>/dev/null || echo "v1")
+  printf "${GREEN}✅ docker-compose${NC}: %s\n" "${compose_version}"
+else
+  cat <<'EOF'
+
+⚠️  docker compose is required but was not found.
+
+Install on macOS:
+  brew install docker-compose
+
+Or install Docker Desktop (includes docker compose v2):
+  brew install --cask docker
+
+Verify:
+  docker compose version
+  # or
+  docker-compose version
+EOF
+  missing=1
+fi
+
 if [[ "${missing}" -ne 0 ]]; then
   printf "\n${RED}❌ Host checks failed. Please install the missing components above.${NC}\n"
   exit 1
