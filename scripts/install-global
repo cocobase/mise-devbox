@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+# Install AI-Agent Harness as global mise tasks.
+# Usage:
+#   AI_HARNESS_HOME=~/.ai-harness ./scripts/install-global
+#
+# After installation, the following commands work from ANY directory:
+#   mise run harness-check
+#   mise run harness-build
+#   mise run harness-up
+#   mise run harness-down
+#   mise run harness-clean
+#   mise run harness-logs
+#   mise run harness-shell
+#   mise run harness-run
+#   mise run harness-versions
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+HARNESS_HOME="${AI_HARNESS_HOME:-${HOME}/.ai-harness}"
+MISE_CONFIG="${HOME}/.config/mise/config.toml"
+
+# ---------------------------------------------------------------------------
+# Pre-flight checks
+# ---------------------------------------------------------------------------
+if [[ ! -d "${HARNESS_HOME}" ]]; then
+  cat <<EOF >&2
+❌ AI-Agent Harness not found at: ${HARNESS_HOME}
+
+Please clone or copy this project to that location first:
+
+  git clone <repo-url> ${HARNESS_HOME}
+  cd ${HARNESS_HOME}
+  ./scripts/install-global
+
+Or specify a custom path:
+
+  AI_HARNESS_HOME=/opt/ai-harness ./scripts/install-global
+EOF
+  exit 1
+fi
+
+for required in docker/Dockerfile docker-compose.yml scripts/toolchain scripts/compose scripts/check-host scripts/lib/common.sh; do
+  if [[ ! -e "${HARNESS_HOME}/${required}" ]]; then
+    echo "❌ Missing required file: ${HARNESS_HOME}/${required}" >&2
+    exit 1
+  fi
+done
+
+if ! command -v mise >/dev/null 2>&1; then
+  cat <<EOF >&2
+❌ mise is required but not found.
+
+Install:
+  brew install mise
+  echo 'eval "\$(mise activate bash)"' >> ~/.bashrc
+
+Then restart your shell and try again.
+EOF
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Backup existing config
+# ---------------------------------------------------------------------------
+mkdir -p "$(dirname "${MISE_CONFIG}")"
+
+if [[ -f "${MISE_CONFIG}" ]]; then
+  backup_path="${MISE_CONFIG}.backup.$(date +%Y%m%d%H%M%S)"
+  cp "${MISE_CONFIG}" "${backup_path}"
+  echo "📦 Backed up existing mise config to: ${backup_path}"
+fi
+
+# ---------------------------------------------------------------------------
+# Idempotency: remove existing harness block if present
+# ---------------------------------------------------------------------------
+if grep -q '# >>> AI-Agent Harness (Global Tasks)' "${MISE_CONFIG}" 2>/dev/null; then
+  echo "🔄 Updating existing AI-Agent Harness global tasks..."
+  # Strip everything between the markers (inclusive)
+  awk '
+    /# >>> AI-Agent Harness \(Global Tasks\)/ { skip=1; next }
+    /# <<< AI-Agent Harness \(Global Tasks\)/ { skip=0; next }
+    !skip
+  ' "${MISE_CONFIG}" > "${MISE_CONFIG}.tmp"
+  mv "${MISE_CONFIG}.tmp" "${MISE_CONFIG}"
+else
+  echo "🆕 Installing AI-Agent Harness global tasks..."
+fi
+
+# ---------------------------------------------------------------------------
+# Append global tasks
+# ---------------------------------------------------------------------------
+cat >> "${MISE_CONFIG}" <<EOF
+
+# >>> AI-Agent Harness (Global Tasks)
+# Installed at: ${HARNESS_HOME}
+# ---------------------------------------------------------------------------
+
+[env]
+AI_HARNESS_HOME = "${HARNESS_HOME}"
+TOOLCHAIN_IMAGE = "ai-dev-toolchain:latest"
+REDIS_URL = "redis://agent-redis:6379/0"
+QDRANT_HOST = "agent-qdrant"
+QDRANT_PORT = "6333"
+
+[tasks.harness-check]
+description = "Check host environment for AI-Agent Harness"
+run = "${HARNESS_HOME}/scripts/check-host"
+
+[tasks.harness-build]
+description = "Build the AI-Agent Harness toolchain Docker image"
+run = "docker build -t \${TOOLCHAIN_IMAGE} -f \${AI_HARNESS_HOME}/docker/Dockerfile \${AI_HARNESS_HOME}"
+
+[tasks.harness-up]
+description = "Start AI-Agent Harness: check host, start infra, build image if needed, and enter container shell"
+run = "AI_HARNESS_HOME=${HARNESS_HOME} ${HARNESS_HOME}/scripts/task-harness-up"
+
+[tasks.harness-down]
+description = "Stop infrastructure and remove all toolchain containers"
+run = "AI_HARNESS_HOME=${HARNESS_HOME} ${HARNESS_HOME}/scripts/task-harness-down"
+
+[tasks.harness-clean]
+description = "Deep clean: remove volumes, network, and toolchain image"
+run = "AI_HARNESS_HOME=${HARNESS_HOME} ${HARNESS_HOME}/scripts/task-harness-clean"
+
+[tasks.harness-logs]
+description = "Tail logs from infrastructure services"
+run = "AI_HARNESS_HOME=${HARNESS_HOME} ${HARNESS_HOME}/scripts/compose --harness-global logs -f"
+
+[tasks.harness-agent-logs]
+description = "Tail agent logs from the mounted workspace"
+run = "tail -f logs/agent.log 2>/dev/null || echo 'No logs/agent.log found in current directory'"
+
+[tasks.harness-shell]
+description = "Open an interactive shell inside the toolchain container (mounts current directory)"
+run = "${HARNESS_HOME}/scripts/toolchain shell"
+
+[tasks.harness-run]
+description = "Run a command inside the toolchain container (mounts current directory)"
+run = "${HARNESS_HOME}/scripts/toolchain run ."
+
+[tasks.harness-versions]
+description = "Print tool versions from inside the toolchain container"
+run = "${HARNESS_HOME}/scripts/toolchain versions"
+
+# <<< AI-Agent Harness (Global Tasks)
+EOF
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+cat <<EOF
+
+✅ AI-Agent Harness global tasks installed successfully!
+
+📍 Install path:    ${HARNESS_HOME}
+⚙️  Mise config:     ${MISE_CONFIG}
+
+🚀 Available from ANY directory:
+
+  mise run harness-check      # Host environment check
+  mise run harness-build      # Build Docker image (one-time)
+  mise run harness-up         # Start infra + enter container shell
+  mise run harness-down       # Stop infra + remove containers
+  mise run harness-clean      # Deep clean everything
+  mise run harness-logs       # Tail infrastructure logs
+  mise run harness-shell      # Enter container shell (fast)
+  mise run harness-run        # Run a command in container
+  mise run harness-versions   # Show tool versions
+
+💡 Quick start:
+
+  cd /path/to/your-project
+  mise run harness-up
+
+This mounts your current directory as /workspace inside the container.
+Multiple instances from different directories run independently.
+
+⚠️  If this is your first time, build the image first:
+
+  mise run harness-build
+
+🔄 To update global tasks later, re-run:
+
+  ${HARNESS_HOME}/scripts/install-global
+EOF

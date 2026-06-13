@@ -38,7 +38,12 @@ else
 fi
 
 mkdir -p /workspace
-chown -R "${HOST_UID}:${HOST_GID}" /workspace 2>/dev/null || true
+# Only chown the workspace mount point itself, not the host files inside it.
+# Recursive chown on macOS/virtiofs mounts can be extremely slow and is usually
+# unnecessary because the host files are already owned by the current user.
+if [[ "$(stat -c '%u:%g' /workspace 2>/dev/null || echo '0:0')" != "${HOST_UID}:${HOST_GID}" ]]; then
+  chown "${HOST_UID}:${HOST_GID}" /workspace 2>/dev/null || true
+fi
 mkdir -p /opt/mise-config /opt/mise-cache
 chmod -R a+rwX /opt/mise-config /opt/mise-cache 2>/dev/null || true
 

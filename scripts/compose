@@ -3,9 +3,14 @@
 # Automatically detects and uses either `docker compose` (v2 plugin) or
 # `docker-compose` (v1 standalone) depending on what is installed.
 #
+# Pass --harness-global as the first argument to target the global Harness
+# compose file (~/.ai-harness/docker-compose.yml) with a fixed project name.
+# This is used by global mise tasks so infrastructure services are shared
+# across all directories.
+#
 # Usage:
 #   scripts/compose up -d
-#   scripts/compose down --volumes
+#   scripts/compose --harness-global up -d
 #   scripts/compose logs -f
 
 set -euo pipefail
@@ -16,5 +21,23 @@ source "${SCRIPT_DIR}/lib/common.sh"
 
 COMPOSE_CMD="$(require_compose_cmd)"
 
-# shellcheck disable=SC2086
-exec ${COMPOSE_CMD} "$@"
+# Check for global mode flag.
+GLOBAL_MODE=0
+if [[ "${1:-}" == "--harness-global" ]]; then
+  GLOBAL_MODE=1
+  shift
+fi
+
+if [[ "${GLOBAL_MODE}" -eq 1 ]]; then
+  if [[ -z "${AI_HARNESS_HOME:-}" ]]; then
+    echo "❌ AI_HARNESS_HOME is not set" >&2
+    exit 1
+  fi
+  COMPOSE_FILE="${AI_HARNESS_HOME}/docker-compose.yml"
+  # shellcheck disable=SC2086
+  exec ${COMPOSE_CMD} -f "${COMPOSE_FILE}" --project-name ai-harness "$@"
+else
+  # Local project invocation: use the compose file in the current directory.
+  # shellcheck disable=SC2086
+  exec ${COMPOSE_CMD} "$@"
+fi

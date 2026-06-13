@@ -283,6 +283,76 @@ mise run clean        # 深度清理（删除卷、网络、镜像）
 
 项目现在支持一个最小化的 AI-Agent 开发环境 (Harness)。
 
+### 全局安装（推荐）
+
+如果你希望从**任意目录**都能使用 `mise run harness-up/down/shell`，可以把 Harness 安装为 mise 全局任务。
+
+#### 1. 克隆到固定目录
+
+```bash
+git clone <repo-url> ~/.ai-harness
+cd ~/.ai-harness
+```
+
+#### 2. 运行安装脚本
+
+```bash
+./scripts/install-global
+```
+
+脚本会：
+- 检查 `~/.ai-harness` 目录结构和依赖
+- 备份 `~/.config/mise/config.toml`
+- 幂等地注入全局环境变量与 `harness-*` 任务
+
+#### 3. 任意目录使用
+
+安装后，以下命令在任何目录都可用：
+
+| 命令 | 说明 |
+|------|------|
+| `mise run harness-check` | 检查本机环境 |
+| `mise run harness-build` | 构建 Docker 镜像 |
+| `mise run harness-up` | 启动基础设施并进入容器 shell |
+| `mise run harness-down` | 停止基础设施并清理容器 |
+| `mise run harness-clean` | 深度清理（含卷、网络、镜像） |
+| `mise run harness-logs` | 查看基础设施日志 |
+| `mise run harness-shell` | 快速进入容器 shell |
+| `mise run harness-run` | 在容器内运行命令 |
+| `mise run harness-versions` | 查看容器内工具版本 |
+
+示例：
+
+```bash
+cd ~/projects/my-ai-agent
+mise run harness-up
+```
+
+你的当前目录会被挂载为容器内的 `/workspace`。
+
+#### 4. 多实例支持
+
+Harness 天然支持多实例：
+- 每个 `mise run harness-up` / `mise run harness-shell` 都会启动一个**独立的容器**
+- 不同目录同时运行会各自挂载自己的目录到 `/workspace`
+- 所有容器共享同一套基础设施（`agent-redis`、`agent-qdrant`）和 `agent-network`
+
+示例：
+
+```bash
+# 终端 1
+cd ~/projects/agent-a
+mise run harness-up
+
+# 终端 2
+cd ~/projects/agent-b
+mise run harness-shell
+```
+
+两个容器同时存在，互相独立，都能通过服务名访问 Redis 和 Qdrant。
+
+> **Colima 用户注意**：Colima 默认只挂载 `$HOME` 目录。如果你在 `/tmp` 等目录运行 Harness，可能会发现挂载为空。请把项目放在 `$HOME` 下，或自行配置 Colima 的挂载目录。
+
 ### 1. 基础设施服务
 通过 `docker-compose.yml` 提供了以下服务：
 - **Redis**: 用于 Agent 的短期记忆和缓存。
@@ -351,6 +421,10 @@ python3 smoke_test.py
 ├── scripts
 │   ├── check-host
 │   ├── compose
+│   ├── install-global
+│   ├── task-harness-clean
+│   ├── task-harness-down
+│   ├── task-harness-up
 │   ├── toolchain
 │   └── lib
 │       └── common.sh
@@ -367,8 +441,10 @@ python3 smoke_test.py
 - 镜像内置 `/opt/mise-config/config.toml` 作为全局工具版本配置，所以挂载的项目目录即使没有 `.mise.toml`，也能直接使用 `python`、`node`、`pnpm` 和 `uv`。
 - `gh` 直接从 GitHub Release 下载安装到镜像中，运行时如需访问私有仓库或创建 PR，会在启动时自动挂载宿主机的 `~/.config/gh` 配置，或可在容器内执行 `gh auth login`。
 - 容器启动时会自动 trust `/workspace/.mise.toml` 或 `/workspace/mise.toml`，避免挂载项目自己的 mise 配置时报未信任错误。
-- `scripts/toolchain` 负责封装 `docker run` 的 UID/GID、volume、工作目录和 image 参数，同时自动透传白名单环境变量、身份认证配置和工具缓存。
-- `scripts/compose` 是 docker compose 的包装器，自动检测并使用 `docker compose` (v2 插件) 或 `docker-compose` (v1 独立命令)，屏蔽版本差异。
+- `scripts/toolchain` 负责封装 `docker run` 的 UID/GID、volume、工作目录和 image 参数，同时自动透传白名单环境变量、身份认证配置和工具缓存。默认挂载**当前工作目录**到 `/workspace`，因此无论从哪个目录调用都能作用于当前项目。
+- `scripts/compose` 是 docker compose 的包装器，自动检测并使用 `docker compose` (v2 插件) 或 `docker-compose` (v1 独立命令)，屏蔽版本差异。它通过 `-f ~/.ai-harness/docker-compose.yml --project-name ai-harness` 确保从任意目录运行时都使用统一的基础设施配置和项目名称。
+- `scripts/install-global` 负责把 Harness 注册为 mise 全局任务。它通过标记块实现幂等更新，安装后可在任意目录使用 `mise run harness-*`。
+- 多实例设计：每个 `docker run --rm` 都会创建独立容器；不同目录同时运行会挂载各自目录；所有容器共享同一个 `agent-network`，因此能统一访问 `agent-redis` 和 `agent-qdrant`。
 
 ## 常见问题
 
@@ -427,3 +503,40 @@ mise run clean
 - 验证无残留
 
 如果只是临时停止服务并保留数据，请使用 `mise run down`。
+
+### 全局任务未生效
+
+如果运行 `mise run harness-up` 提示找不到任务，说明全局配置未加载。
+
+1. 确认已执行安装脚本：
+   ```bash
+   ~/.ai-harness/scripts/install-global
+   ```
+
+2. 确认 mise 全局配置存在：
+   ```bash
+   ls ~/.config/mise/config.toml
+   ```
+
+3. 重启 shell 或运行：
+   ```bash
+   mise reshim
+   ```
+
+### 在 `/tmp` 等目录挂载为空
+
+如果你使用 **Colima**，它默认只挂载 `$HOME` 目录到 Docker VM。在非 `$HOME` 目录（如 `/tmp`）运行 Harness 时，`docker run -v` 挂载会失效，容器内 `/workspace` 为空。
+
+解决方案：
+- 把项目放在 `$HOME` 下运行 Harness；或
+- 编辑 Colima 配置添加额外挂载：
+  ```bash
+  colima template  # 编辑 mounts 部分
+  colima stop
+  colima start
+  ```
+
+### 项目级任务 vs 全局任务
+
+- **项目级任务**：仅在当前仓库根目录生效（`mise run up/down/shell/build` 等），用于开发 Harness 本身。
+- **全局任务**：安装后在任意目录生效（`mise run harness-*`），推荐日常使用。

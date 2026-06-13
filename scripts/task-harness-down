@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Stop infrastructure and remove all toolchain containers (preserves data volumes and network).
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+
+GLOBAL_MODE=0
+if [[ -n "${AI_HARNESS_HOME:-}" ]]; then
+  if [[ "${SCRIPT_DIR}" == "${AI_HARNESS_HOME}/scripts" ]]; then
+    GLOBAL_MODE=1
+  fi
+fi
+
+COMPOSE_ARGS=()
+if [[ "${GLOBAL_MODE}" -eq 1 ]]; then
+  COMPOSE_ARGS+=("--harness-global")
+fi
+
+echo "[harness-down] Stopping infrastructure services..."
+if [[ "${#COMPOSE_ARGS[@]}" -gt 0 ]]; then
+  "${SCRIPT_DIR}/compose" "${COMPOSE_ARGS[@]}" down
+else
+  "${SCRIPT_DIR}/compose" down
+fi
+
+echo "[harness-down] Stopping and removing toolchain containers..."
+if docker ps -q --filter "ancestor=${TOOLCHAIN_IMAGE}" | grep -q .; then
+  docker ps -q --filter "ancestor=${TOOLCHAIN_IMAGE}" | xargs docker stop >/dev/null 2>&1 || true
+fi
+if docker ps -aq --filter "ancestor=${TOOLCHAIN_IMAGE}" | grep -q .; then
+  docker ps -aq --filter "ancestor=${TOOLCHAIN_IMAGE}" | xargs docker rm >/dev/null 2>&1 || true
+fi
+
+echo "[harness-down] ✅ Done. Data volumes (qdrant_data) and agent-network preserved."

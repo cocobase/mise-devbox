@@ -26,6 +26,7 @@ services:
 
 networks:
   agent-network:
+    name: agent-network
     driver: bridge
 
 volumes:
