@@ -1,160 +1,137 @@
-# Mac AI Dev Toolchain
+# AI 开发环境一键启动工具
 
-面向 Mac 本地开发的 Docker 工具链项目。它用 `mise` 作为本机任务入口，用 Docker 镜像封装 Python、Node.js、pnpm、uv、git、GitHub CLI 和 mise。Mise 是一个多合一的开发环境管理器，通过统一的 mise.toml 配置文件，集中化管理项目的开发工具版本、环境变量以及自动化运行任务。
+这个项目可以帮你在 Mac 上快速准备一个统一的 AI 开发环境。第一次安装好之后，你只需要在自己的项目目录里运行一条命令，就能进入已经准备好的开发环境。
 
-目标场景：初始化 AI 驱动开发项目时，一条命令启动容器，挂载本地开发目录，然后直接使用统一版本的开发工具链。
+这个环境里已经包含常用工具：
 
-## 目录
+- Python
+- Node.js
+- pnpm
+- uv
+- git
+- GitHub CLI
+- Redis
+- Qdrant
 
-- [包含的工具](#包含的工具)
-- [环境准备](#环境准备)
-- [构建镜像](#构建镜像)
-- [进入工具链容器](#进入工具链容器)
-- [直接使用 Docker image](#直接使用-docker-image)
-- [`/workspace` 目录说明](#workspace-目录说明)
-- [常用任务](#常用任务)
-- [AI-Agent Harness (新)](#ai-agent-harness-新)
-- [项目结构](#项目结构)
-- [设计说明](#设计说明)
-- [常见问题](#常见问题)
+你不需要先理解 Docker、镜像、网络或数据卷。先按下面步骤跑起来即可。
 
-## 包含的工具
+## 适合谁使用
 
-v1 工具链包含：
+这个工具适合：
 
-- `mise`
-- `python` 3.12
-- `node` 22
-- `pnpm`
-- `uv`
-- `git`
-- `gh`
+- 想快速开始 AI Agent 项目的人
+- 不想手动配置 Python、Node.js、Redis、Qdrant 的人
+- 希望多个项目都使用同一套开发环境的人
+- 希望环境可以启动、停止、清理，并且行为一致的人
 
-默认 Docker image 名称：
+## 第一次使用
 
-```text
-ai-dev-toolchain:latest
-```
+### 1. 准备 Mac 环境
 
-## 环境准备
+你需要先安装：
 
-Mac 本机需要：
+- Docker Desktop 或 Colima
+- mise
 
-- `mise`
-- Docker CLI
-- 一个 Docker 运行时，二选一：
-  - Docker Desktop
-  - Colima
+### 2. 下载到固定目录
 
-先运行检查脚本：
+推荐把这个项目放到 `~/.ai-harness`，这样以后可以在任意项目目录使用。
 
 ```bash
-scripts/check-host
-# 或
-mise run check
+git clone <repo-url> ~/.ai-harness
+cd ~/.ai-harness
 ```
 
-检查项覆盖：
-- `mise` 命令及版本
-- `docker` CLI 及 Daemon 状态
-- `docker compose` / `docker-compose` 可用性
-- `homebrew` 提示性检查（非阻塞）
-
-如果依赖缺失，脚本会按优先级打印安装和启动步骤。
-
-### 方案 A：Colima
-
-适合偏命令行、轻量化的本地容器环境。
-
-```bash
-brew install colima docker
-colima start --runtime docker --cpu 4 --memory 8
-docker version
-```
-
-### 方案 B：Docker Desktop
-
-适合需要 GUI、内置管理界面或 Docker Desktop 生态能力的环境。
-
-```bash
-brew install --cask docker
-open -a Docker
-docker version
-```
-
-### 安装 mise
-
-```bash
-brew install mise
-```
-
-如果不使用 Homebrew：
-
-```bash
-curl https://mise.run | sh
-```
-
-zsh 用户安装后需要激活：
-
-```bash
-echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
-exec zsh
-```
-
-验证：
-
-```bash
-mise --version
-```
-
-## 构建镜像
-
-在本项目根目录执行：
+### 3. 检查环境
 
 ```bash
 mise run check
-mise run build
 ```
 
-构建完成后查看镜像：
+如果缺少组件，命令会提示安装方法。
+
+### 4. 安装全局命令
 
 ```bash
-docker image ls ai-dev-toolchain
+./scripts/install-global
 ```
 
-查看容器内工具版本：
+安装完成后，你会得到一组 `harness-*` 命令。以后不需要每次进入 `~/.ai-harness` 目录。
+
+### 5. 构建开发环境
+
+第一次使用前，先构建环境：
 
 ```bash
-mise run versions
+mise run harness-build
 ```
 
-预期会看到类似输出：
+第一次构建可能需要几分钟。以后通常不需要重复构建。
 
-```text
-mise: 2026.5.15 linux-arm64
-python: Python 3.12.13
-node: v22.22.3
-pnpm: 11.2.2
-uv: uv 0.11.16
-git: git version 2.43.0
-gh: gh version 2.x.x
-```
+### 6. 进入你的项目目录
 
-## 进入工具链容器
-
-把当前目录挂载为容器内 `/workspace`：
+例如：
 
 ```bash
-mise run shell
+cd ~/projects/my-ai-agent
 ```
 
-挂载指定项目目录：
+如果项目目录还不存在：
 
 ```bash
-mise run shell -- ~/project/dev-tool
+mkdir -p ~/projects/my-ai-agent
+cd ~/projects/my-ai-agent
 ```
 
-进入容器后可以直接使用工具链：
+### 7. 启动并进入开发环境
+
+```bash
+mise run harness-up
+```
+
+成功后，你会进入一个命令行环境。你的当前项目目录会出现在这个环境里的 `/workspace`。
+
+## 每天怎么用
+
+日常使用只需要这几步：
+
+```bash
+cd 你的项目目录
+mise run harness-up
+```
+
+退出当前开发环境：
+
+```bash
+exit
+```
+
+停止后台服务：
+
+```bash
+mise run harness-down
+```
+
+## 常用命令
+
+| 我想要 | 运行命令 |
+|---|---|
+| 检查本机环境是否可用 | `mise run harness-check` |
+| 第一次构建开发环境 | `mise run harness-build` |
+| 启动并进入开发环境 | `mise run harness-up` |
+| 快速进入开发环境 | `mise run harness-shell` |
+| 在开发环境里运行一次命令 | `mise run harness-run -- python --version` |
+| 查看工具版本 | `mise run harness-versions` |
+| 查看 Redis 和 Qdrant 日志 | `mise run harness-logs` |
+| 查看项目里的 Agent 日志 | `mise run harness-agent-logs` |
+| 停止后台服务，保留数据 | `mise run harness-down` |
+| 彻底清理环境和数据 | `mise run harness-clean` |
+
+注意：`harness-clean` 会删除数据和本地镜像。普通停止请优先使用 `harness-down`。
+
+## 怎么判断已经成功
+
+进入环境后，可以运行：
 
 ```bash
 python --version
@@ -165,378 +142,173 @@ git --version
 gh --version
 ```
 
-执行一次性命令：
+如果这些命令都能输出版本号，说明开发工具已经可用。
+
+也可以运行：
 
 ```bash
-mise run run -- ~/project/dev-tool python --version
-mise run run -- ~/project/dev-tool node --version
-mise run run -- ~/project/dev-tool pnpm --version
-mise run run -- ~/project/dev-tool uv --version
-mise run run -- ~/project/dev-tool git --version
-mise run run -- ~/project/dev-tool gh --version
+pwd
+ls
 ```
 
-初始化一个新项目目录：
+如果 `pwd` 显示 `/workspace`，并且 `ls` 能看到你项目目录里的文件，说明项目目录已经正确进入开发环境。
 
-```bash
-mkdir -p ~/project/dev-tool
-mise run shell -- ~/project/dev-tool
-```
+## 我的文件在哪里
 
-## 直接使用 Docker image
+你的文件仍然保存在 Mac 原来的项目目录里。
 
-`mise` 任务只是封装了 `docker run` 参数。如果不通过 `mise`，也可以直接运行镜像。
-
-> 💡 建议优先使用 `mise run shell` / `mise run run`，因为 `scripts/toolchain` 会自动处理环境变量透传、身份认证挂载和工具缓存挂载。手动运行以下命令时这些配置不会生效。
-
-把当前目录挂载为 `/workspace`：
-
-```bash
-docker run --rm -it \
-  -e HOST_UID="$(id -u)" \
-  -e HOST_GID="$(id -g)" \
-  -e HOST_USER="$(id -un)" \
-  -v "$PWD:/workspace" \
-  -w /workspace \
-  ai-dev-toolchain:latest \
-  bash
-```
-
-挂载指定项目目录：
-
-```bash
-docker run --rm -it \
-  -e HOST_UID="$(id -u)" \
-  -e HOST_GID="$(id -g)" \
-  -e HOST_USER="$(id -un)" \
-  -v "$HOME/project/dev-tool:/workspace" \
-  -w /workspace \
-  ai-dev-toolchain:latest \
-  bash
-```
-
-执行一次性命令：
-
-```bash
-docker run --rm \
-  -e HOST_UID="$(id -u)" \
-  -e HOST_GID="$(id -g)" \
-  -e HOST_USER="$(id -un)" \
-  -v "$PWD:/workspace" \
-  -w /workspace \
-  ai-dev-toolchain:latest \
-  python --version
-```
-
-## `/workspace` 目录说明
-
-`/workspace` 是容器内路径，不是 Mac 本机固定目录。
-
-镜像通过 `Dockerfile` 设置默认工作目录：
-
-```dockerfile
-WORKDIR /workspace
-```
-
-容器启动时，`entrypoint.sh` 会确保目录存在：
-
-```bash
-mkdir -p /workspace
-```
-
-真正的代码来自 Docker volume 挂载。例如：
-
-```bash
-mise run shell -- ~/project/dev-tool
-```
-
-等价于把本机目录：
-
-```text
-~/project/dev-tool
-```
-
-挂载到容器内：
-
-```text
-/workspace
-```
-
-## 常用任务
-
-```bash
-mise tasks
-mise run check        # 宿主机环境自检（含 docker-compose 检测）
-mise run build        # 构建工具链镜像
-mise run versions     # 查看容器内工具版本
-mise run shell        # 进入容器交互式 Shell
-mise run run          # 在容器内执行一次性命令
-mise run setup        # 安装本机/容器所需依赖
-mise run up           # 启动完整 Harness（检查 → 基础设施 → 镜像 → 进入 Shell）
-mise run down         # 停止基础设施并清理容器（保留数据卷）
-mise run logs         # 查看基础设施日志
-mise run agent-logs   # 查看 Agent 日志
-mise run clean        # 深度清理（删除卷、网络、镜像）
-```
-
-## AI-Agent Harness (新)
-
-项目现在支持一个最小化的 AI-Agent 开发环境 (Harness)。
-
-### 全局安装（推荐）
-
-如果你希望从**任意目录**都能使用 `mise run harness-up/down/shell`，可以把 Harness 安装为 mise 全局任务。
-
-#### 1. 克隆到固定目录
-
-```bash
-git clone <repo-url> ~/.ai-harness
-cd ~/.ai-harness
-```
-
-#### 2. 运行安装脚本
-
-```bash
-./scripts/install-global
-```
-
-脚本会：
-- 检查 `~/.ai-harness` 目录结构和依赖
-- 备份 `~/.config/mise/config.toml`
-- 幂等地注入全局环境变量与 `harness-*` 任务
-
-#### 3. 任意目录使用
-
-安装后，以下命令在任何目录都可用：
-
-| 命令 | 说明 |
-|------|------|
-| `mise run harness-check` | 检查本机环境 |
-| `mise run harness-build` | 构建 Docker 镜像 |
-| `mise run harness-up` | 启动基础设施并进入容器 shell |
-| `mise run harness-down` | 停止基础设施并清理容器 |
-| `mise run harness-clean` | 深度清理（含卷、网络、镜像） |
-| `mise run harness-logs` | 查看基础设施日志 |
-| `mise run harness-shell` | 快速进入容器 shell |
-| `mise run harness-run` | 在容器内运行命令 |
-| `mise run harness-versions` | 查看容器内工具版本 |
-
-示例：
+当你运行：
 
 ```bash
 cd ~/projects/my-ai-agent
 mise run harness-up
 ```
 
-你的当前目录会被挂载为容器内的 `/workspace`。
+工具会把这个目录带入开发环境。在开发环境里，它显示为：
 
-#### 4. 多实例支持
-
-Harness 天然支持多实例：
-- 每个 `mise run harness-up` / `mise run harness-shell` 都会启动一个**独立的容器**
-- 不同目录同时运行会各自挂载自己的目录到 `/workspace`
-- 所有容器共享同一套基础设施（`agent-redis`、`agent-qdrant`）和 `agent-network`
-
-示例：
-
-```bash
-# 终端 1
-cd ~/projects/agent-a
-mise run harness-up
-
-# 终端 2
-cd ~/projects/agent-b
-mise run harness-shell
+```text
+/workspace
 ```
 
-两个容器同时存在，互相独立，都能通过服务名访问 Redis 和 Qdrant。
+你在 `/workspace` 里创建或修改的文件，会同步出现在 Mac 上的 `~/projects/my-ai-agent`。
 
-> **Colima 用户注意**：Colima 默认只挂载 `$HOME` 目录。如果你在 `/tmp` 等目录运行 Harness，可能会发现挂载为空。请把项目放在 `$HOME` 下，或自行配置 Colima 的挂载目录。
+## API Key 怎么配置
 
-### 1. 基础设施服务
-通过 `docker-compose.yml` 提供了以下服务：
-- **Redis**: 用于 Agent 的短期记忆和缓存。
-- **Qdrant**: 用于向量存储和知识库 (RAG)。
+如果你的项目需要 OpenAI、Anthropic、Google 或其他服务的 API Key，请先把 Key 放到当前终端环境中。例如：
 
-启动基础设施：
 ```bash
+export OPENAI_API_KEY="你的 Key"
+```
+
+启动环境时，工具会把当前终端里常见 AI 服务的 API Key 带入开发环境。
+
+如果你是在本仓库目录开发这个工具本身，也可以复制模板文件：
+
+```bash
+cp .env.example .env
+```
+
+## 停止和清理有什么区别
+
+| 命令 | 作用 | 是否删除数据 |
+|---|---|---|
+| `exit` | 退出当前开发环境 | 否 |
+| `mise run harness-down` | 停止后台服务，保留数据 | 否 |
+| `mise run harness-clean` | 彻底清理容器、镜像、网络和数据 | 是 |
+
+日常使用推荐：
+
+```bash
+mise run harness-down
+```
+
+只有在你想完全重来，或者需要释放更多本地资源时，再使用：
+
+```bash
+mise run harness-clean
+```
+
+## 在本仓库开发这个工具
+
+如果你是在维护这个 Harness 项目本身，而不是在普通业务项目里使用它，可以在本仓库目录运行：
+
+```bash
+mise run check
+mise run build
 mise run up
 ```
 
-### 2. 工具链集成
-`scripts/toolchain` 已更新，启动时会自动加入 `agent-network` 网络。
-这意味着你在容器内可以通过服务名直接访问基础设施：
-- Redis: `agent-redis:6379`
-- Qdrant: `agent-qdrant:6333`
+这里的 `mise run up` 是本仓库的本地开发入口。普通使用者更推荐使用全局命令：
 
-### 3. 开发起步 (Python/Node.js)
-项目根目录已配置 `pyproject.toml` (uv) 和 `package.json` (pnpm)，包含常用的 AI 库 (LangChain, Qdrant client, Redis client)。
-
-在容器内初始化：
 ```bash
-mise run setup
+mise run harness-up
 ```
-
-### 4. 连通性测试
-在宿主机运行冒烟测试验证环境：
-```bash
-python3 smoke_test.py
-```
-
-覆盖验证项：
-- 容器内工具版本与 `.mise.toml` 一致
-- 宿主机目录 ↔ `/workspace` 双向同步
-- `up → down` 后无容器残留
-- 标准 `down` 后 Qdrant 数据卷保留
-- 深度 `clean` 后网络和镜像无残留
-- 热启动计时（目标 ≤ 5s）
-
-### 5. API Key 安全注入
-为了保护敏感信息，我们采用以下流程：
-1. **复制模板**：在根目录执行 `cp .env.example .env`。
-2. **填写 Key**：编辑 `.env` 文件，填入你的 OpenAI/Anthropic 等 API Key（此文件已被 `.gitignore` 忽略）。
-3. **自动加载**：`mise` 会自动加载 `.env` 中的变量。
-4. **容器透传**：`scripts/toolchain` 会自动识别并透传白名单环境变量到容器内部：
-   - `OPENAI_*`, `ANTHROPIC_*`, `GOOGLE_*`, `LANGCHAIN_*`, `AZURE_*`
-   - `MISTRAL_*`, `GROQ_*`, `COHERE_*`, `HF_*`
-   - 任何以 `*_API_KEY` 结尾的变量
-   - 基础设施变量：`REDIS_URL`, `QDRANT_HOST`, `QDRANT_PORT`
-
-## 项目结构
-
-```text
-.
-├── .dockerignore
-├── .env.example
-├── .mise.toml
-├── README.md
-├── docker-compose.yml
-├── docker
-│   ├── Dockerfile
-│   ├── entrypoint.sh
-│   └── mise-global.toml
-├── plan.md
-├── pyproject.toml
-├── package.json
-├── scripts
-│   ├── check-host
-│   ├── compose
-│   ├── install-global
-│   ├── task-harness-clean
-│   ├── task-harness-down
-│   ├── task-harness-up
-│   ├── toolchain
-│   └── lib
-│       └── common.sh
-├── smoke_test.py
-└── user-story.md
-```
-
-## 设计说明
-
-- 本机 `mise` 负责提供统一任务入口。
-- Docker image 负责封装工具链版本和运行环境。
-- 本地项目目录通过 volume 挂载到容器内 `/workspace`。
-- 容器使用宿主机当前用户的 UID/GID 运行，避免在本机项目目录生成 root 拥有的文件。
-- 镜像内置 `/opt/mise-config/config.toml` 作为全局工具版本配置，所以挂载的项目目录即使没有 `.mise.toml`，也能直接使用 `python`、`node`、`pnpm` 和 `uv`。
-- `gh` 直接从 GitHub Release 下载安装到镜像中，运行时如需访问私有仓库或创建 PR，会在启动时自动挂载宿主机的 `~/.config/gh` 配置，或可在容器内执行 `gh auth login`。
-- 容器启动时会自动 trust `/workspace/.mise.toml` 或 `/workspace/mise.toml`，避免挂载项目自己的 mise 配置时报未信任错误。
-- `scripts/toolchain` 负责封装 `docker run` 的 UID/GID、volume、工作目录和 image 参数，同时自动透传白名单环境变量、身份认证配置和工具缓存。默认挂载**当前工作目录**到 `/workspace`，因此无论从哪个目录调用都能作用于当前项目。
-- `scripts/compose` 是 docker compose 的包装器，自动检测并使用 `docker compose` (v2 插件) 或 `docker-compose` (v1 独立命令)，屏蔽版本差异。它通过 `-f ~/.ai-harness/docker-compose.yml --project-name ai-harness` 确保从任意目录运行时都使用统一的基础设施配置和项目名称。
-- `scripts/install-global` 负责把 Harness 注册为 mise 全局任务。它通过标记块实现幂等更新，安装后可在任意目录使用 `mise run harness-*`。
-- 多实例设计：每个 `docker run --rm` 都会创建独立容器；不同目录同时运行会挂载各自目录；所有容器共享同一个 `agent-network`，因此能统一访问 `agent-redis` 和 `agent-qdrant`。
 
 ## 常见问题
 
-### Docker daemon 不可访问
+### 提示 Docker daemon 不可访问
 
-错误示例：
+这通常表示 Docker 已安装，但还没有启动。
 
-```text
-Docker CLI is installed, but Docker daemon is not reachable.
-```
-
-这表示 `docker` 命令存在，但 Docker 运行时没有启动。
-
-使用 Colima：
-
-```bash
-colima start --runtime docker --cpu 4 --memory 8
-docker version
-```
-
-使用 Docker Desktop：
+如果你使用 Docker Desktop：
 
 ```bash
 open -a Docker
 docker version
 ```
 
-### 镜像不存在
-
-如果运行容器时提示找不到 `ai-dev-toolchain:latest`，先构建镜像：
+如果你使用 Colima：
 
 ```bash
-mise run build
+colima start --runtime docker --cpu 4 --memory 8
+docker version
 ```
 
-### mise trust 错误
+### 提示找不到 `harness-up`
 
-如果看到 mise trust 相关错误，通常是因为容器内用户 home 目录权限问题。镜像的 `entrypoint.sh` 已自动处理 `/workspace/.mise.toml` 的 trust，并确保 home 目录权限正确。如果仍报错，先确认镜像已用最新代码重新构建：
+说明全局命令还没有安装，或 mise 没有加载配置。
+
+先确认安装过：
 
 ```bash
-mise run build
-mise run versions
+~/.ai-harness/scripts/install-global
 ```
 
-### 清理镜像
+再确认配置文件存在：
 
 ```bash
-mise run clean
+ls ~/.config/mise/config.toml
 ```
 
-`clean` 是**深度清理**，会：
-- 停止并删除基础设施服务及其数据卷
-- 删除所有 toolchain 容器
-- 删除本地 `ai-dev-toolchain:latest` 镜像
-- 移除 `agent-network` 网络
-- 验证无残留
+### 提示镜像不存在
 
-如果只是临时停止服务并保留数据，请使用 `mise run down`。
+先构建环境：
 
-### 全局任务未生效
+```bash
+mise run harness-build
+```
 
-如果运行 `mise run harness-up` 提示找不到任务，说明全局配置未加载。
+也可以直接运行：
 
-1. 确认已执行安装脚本：
-   ```bash
-   ~/.ai-harness/scripts/install-global
-   ```
+```bash
+mise run harness-up
+```
 
-2. 确认 mise 全局配置存在：
-   ```bash
-   ls ~/.config/mise/config.toml
-   ```
+如果镜像不存在，启动脚本会尝试自动构建。
 
-3. 重启 shell 或运行：
-   ```bash
-   mise reshim
-   ```
+### 使用 Colima 时看不到项目文件
 
-### 在 `/tmp` 等目录挂载为空
+Colima 默认更适合挂载 `$HOME` 下面的目录。建议把项目放在：
 
-如果你使用 **Colima**，它默认只挂载 `$HOME` 目录到 Docker VM。在非 `$HOME` 目录（如 `/tmp`）运行 Harness 时，`docker run -v` 挂载会失效，容器内 `/workspace` 为空。
+```text
+~/projects
+```
 
-解决方案：
-- 把项目放在 `$HOME` 下运行 Harness；或
-- 编辑 Colima 配置添加额外挂载：
-  ```bash
-  colima template  # 编辑 mounts 部分
-  colima stop
-  colima start
-  ```
+避免放在 `/tmp` 等目录。
 
-### 项目级任务 vs 全局任务
+### 想重新来一遍
 
-- **项目级任务**：仅在当前仓库根目录生效（`mise run up/down/shell/build` 等），用于开发 Harness 本身。
-- **全局任务**：安装后在任意目录生效（`mise run harness-*`），推荐日常使用。
+如果只是停止后台服务：
+
+```bash
+mise run harness-down
+```
+
+如果想彻底清理并重新构建：
+
+```bash
+mise run harness-clean
+mise run harness-build
+```
+
+## 更多说明
+
+普通使用者通常只需要阅读本 README。
+
+如果你需要排查问题、理解清理策略或查看日志，请看：
+
+- [运维与排障说明](docs/operations.md)
+
+如果你需要了解底层实现、Docker 镜像、权限、挂载、网络和脚本设计，请看：
+
+- [架构与实现说明](docs/architecture.md)
