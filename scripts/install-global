@@ -107,42 +107,52 @@ QDRANT_PORT = "6333"
 
 [tasks.harness-check]
 description = "Check host environment for AI-Agent Harness"
+dir = "{{cwd}}"
 run = "${HARNESS_HOME}/scripts/check-host"
 
 [tasks.harness-build]
 description = "Build the AI-Agent Harness toolchain Docker image"
+dir = "{{cwd}}"
 run = "docker build -t \${TOOLCHAIN_IMAGE} -f \${AI_HARNESS_HOME}/docker/Dockerfile \${AI_HARNESS_HOME}"
 
 [tasks.harness-up]
 description = "Start AI-Agent Harness: check host, start infra, build image if needed, and enter container shell"
+dir = "{{cwd}}"
 run = "AI_HARNESS_HOME=${HARNESS_HOME} ${HARNESS_HOME}/scripts/task-harness-up"
 
 [tasks.harness-down]
 description = "Stop infrastructure and remove all toolchain containers"
+dir = "{{cwd}}"
 run = "AI_HARNESS_HOME=${HARNESS_HOME} ${HARNESS_HOME}/scripts/task-harness-down"
 
 [tasks.harness-clean]
 description = "Deep clean: remove volumes, network, and toolchain image"
+dir = "{{cwd}}"
 run = "AI_HARNESS_HOME=${HARNESS_HOME} ${HARNESS_HOME}/scripts/task-harness-clean"
 
 [tasks.harness-logs]
 description = "Tail logs from infrastructure services"
+dir = "{{cwd}}"
 run = "AI_HARNESS_HOME=${HARNESS_HOME} ${HARNESS_HOME}/scripts/compose --harness-global logs -f"
 
 [tasks.harness-agent-logs]
 description = "Tail agent logs from the mounted workspace"
+dir = "{{cwd}}"
 run = "tail -f logs/agent.log 2>/dev/null || echo 'No logs/agent.log found in current directory'"
 
 [tasks.harness-shell]
 description = "Open an interactive shell inside the toolchain container (mounts current directory)"
+dir = "{{cwd}}"
 run = "${HARNESS_HOME}/scripts/toolchain shell"
 
 [tasks.harness-run]
 description = "Run a command inside the toolchain container (mounts current directory)"
+dir = "{{cwd}}"
 run = "${HARNESS_HOME}/scripts/toolchain run ."
 
 [tasks.harness-versions]
 description = "Print tool versions from inside the toolchain container"
+dir = "{{cwd}}"
 run = "${HARNESS_HOME}/scripts/toolchain versions"
 
 # <<< AI-Agent Harness (Global Tasks)

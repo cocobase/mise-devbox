@@ -140,6 +140,33 @@ build_docker_args() {
   DOCKER_ARGS+=("${IMAGE}")
 }
 
+# Ensure the toolchain image exists, building it if necessary.
+ensure_image() {
+  if docker image inspect "${IMAGE}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "[toolchain] ⚠️  Image ${IMAGE} not found. Building now (first build may take a few minutes)..."
+
+  local global_mode=0
+  if [[ -n "${AI_HARNESS_HOME:-}" ]]; then
+    if [[ "${SCRIPT_DIR}" == "${AI_HARNESS_HOME}/scripts" ]]; then
+      global_mode=1
+    fi
+  fi
+
+  local build_context dockerfile
+  if [[ "${global_mode}" -eq 1 ]]; then
+    build_context="${AI_HARNESS_HOME}"
+    dockerfile="${AI_HARNESS_HOME}/docker/Dockerfile"
+  else
+    build_context="${SCRIPT_DIR}/.."
+    dockerfile="${SCRIPT_DIR}/../docker/Dockerfile"
+  fi
+
+  docker build -t "${IMAGE}" -f "${dockerfile}" "${build_context}"
+}
+
 # -----------------------------------------------------------------------------
 # Main dispatcher
 # -----------------------------------------------------------------------------
@@ -148,11 +175,13 @@ shift || true
 
 case "${command}" in
   shell)
+    ensure_image
     project_dir="$(abs_path "${1:-.}")"
     build_docker_args "${project_dir}"
     exec docker run "${DOCKER_ARGS[@]}" bash
     ;;
   run)
+    ensure_image
     if [[ $# -lt 2 ]]; then
       usage
       exit 2
@@ -163,6 +192,7 @@ case "${command}" in
     exec docker run "${DOCKER_ARGS[@]}" "$@"
     ;;
   versions)
+    ensure_image
     project_dir="$(abs_path "${1:-.}")"
     build_docker_args "${project_dir}"
     exec docker run "${DOCKER_ARGS[@]}" bash -lc \

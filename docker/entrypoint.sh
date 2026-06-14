@@ -56,6 +56,9 @@ chown -R "${HOST_UID}:${HOST_GID}" "${user_home}" 2>/dev/null || true
 export MISE_DATA_DIR=/opt/mise
 export MISE_CONFIG_DIR=/opt/mise-config
 export MISE_CACHE_DIR=/opt/mise-cache
+export XDG_CONFIG_HOME="${MISE_CONFIG_DIR}"
+export XDG_DATA_HOME="${MISE_DATA_DIR}"
+export XDG_CACHE_HOME="${MISE_CACHE_DIR}"
 export PATH="/opt/mise/shims:/usr/local/bin:${PATH}"
 
 for config_file in /workspace/.mise.toml /workspace/mise.toml; do
@@ -67,6 +70,9 @@ for config_file in /workspace/.mise.toml /workspace/mise.toml; do
       "MISE_DATA_DIR=${MISE_DATA_DIR}" \
       "MISE_CONFIG_DIR=${MISE_CONFIG_DIR}" \
       "MISE_CACHE_DIR=${MISE_CACHE_DIR}" \
+      "XDG_CONFIG_HOME=${XDG_CONFIG_HOME}" \
+      "XDG_DATA_HOME=${XDG_DATA_HOME}" \
+      "XDG_CACHE_HOME=${XDG_CACHE_HOME}" \
       "PATH=${PATH}" \
       mise trust "${config_file}" >/dev/null 2>&1 || true
   fi
@@ -79,5 +85,8 @@ exec sudo \
   "MISE_DATA_DIR=${MISE_DATA_DIR}" \
   "MISE_CONFIG_DIR=${MISE_CONFIG_DIR}" \
   "MISE_CACHE_DIR=${MISE_CACHE_DIR}" \
+  "XDG_CONFIG_HOME=${XDG_CONFIG_HOME}" \
+  "XDG_DATA_HOME=${XDG_DATA_HOME}" \
+  "XDG_CACHE_HOME=${XDG_CACHE_HOME}" \
   "PATH=${PATH}" \
   "$@"
