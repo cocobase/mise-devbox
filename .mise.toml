@@ -1,6 +1,6 @@
 [env]
 _.file = ".env"
-TOOLCHAIN_IMAGE = "ai-dev-toolchain:latest"
+TOOLCHAIN_IMAGE = "ai-dev-toolchain:refactored"
 REDIS_URL = "redis://agent-redis:6379/0"
 QDRANT_HOST = "agent-qdrant"
 QDRANT_PORT = "6333"
@@ -8,7 +8,7 @@ QDRANT_PORT = "6333"
 [tools]
 python = "3.12.13"
 node = "22.22.3"
-pnpm = "11.2.2"
+"npm:pnpm" = "11.2.2"
 uv = "0.11.16"
 
 [tasks.setup]

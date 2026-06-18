@@ -78,7 +78,7 @@ mise run build
 默认镜像名称是：
 
 ```text
-ai-dev-toolchain:latest
+ai-dev-toolchain:refactored
 ```
 
 ## 启动、进入、退出

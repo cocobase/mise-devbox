@@ -15,7 +15,7 @@
 默认工具链镜像名称：
 
 ```text
-ai-dev-toolchain:latest
+ai-dev-toolchain:refactored
 ```
 
 默认基础设施服务：
@@ -329,7 +329,7 @@ docker run --rm -it \
   -e HOST_USER="$(id -un)" \
   -v "$PWD:/workspace" \
   -w /workspace \
-  ai-dev-toolchain:latest \
+  ai-dev-toolchain:refactored \
   bash
 ```
 
@@ -342,7 +342,7 @@ docker run --rm \
   -e HOST_USER="$(id -un)" \
   -v "$PWD:/workspace" \
   -w /workspace \
-  ai-dev-toolchain:latest \
+  ai-dev-toolchain:refactored \
   python --version
 ```
 

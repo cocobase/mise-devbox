@@ -100,7 +100,7 @@ cat >> "${MISE_CONFIG}" <<EOF
 
 [env]
 AI_HARNESS_HOME = "${HARNESS_HOME}"
-TOOLCHAIN_IMAGE = "ai-dev-toolchain:latest"
+TOOLCHAIN_IMAGE = "ai-dev-toolchain:refactored"
 REDIS_URL = "redis://agent-redis:6379/0"
 QDRANT_HOST = "agent-qdrant"
 QDRANT_PORT = "6333"

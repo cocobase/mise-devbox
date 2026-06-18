@@ -46,7 +46,7 @@
   修改 `mise run up`，使其按顺序执行以下步骤（任何一个步骤失败即中断并给出明确错误）：
   1. **预检依赖**：隐式调用 `mise run check`，确保宿主机环境就绪。
   2. **启动基础设施**：`docker compose up -d`（Redis、Qdrant）。
-  3. **镜像校验/构建**：检测 `ai-dev-toolchain:latest` 镜像是否存在。
+  3. **镜像校验/构建**：检测 `ai-dev-toolchain:refactored` 镜像是否存在。
      - 若不存在：自动触发构建（`mise run build`），并提示用户"首次构建预计 1–3 分钟"。
      - 若存在：跳过构建。
   4. **进入容器 Shell**：`docker run --rm -it ... bash`，直接阻塞式进入交互环境。
@@ -86,7 +86,7 @@
   - **`mise run clean`**（深度清理，新增任务）：
     - 执行 `docker compose down --volumes`（删除 Qdrant 数据卷，**有数据丢失风险**）。
     - 移除 `agent-network`（若已无容器连接）。
-    - 删除本地 `ai-dev-toolchain:latest` 镜像。
+    - 删除本地 `ai-dev-toolchain:refactored` 镜像。
     - 验证 `docker ps -a` 为空、`docker network ls` 无残留。
 
 - [ ] **3.3 存储持久化策略验证**  

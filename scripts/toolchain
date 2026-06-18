@@ -176,12 +176,19 @@ shift || true
 case "${command}" in
   shell)
     ensure_image
-    project_dir="$(abs_path "${1:-.}")"
+    # Handle the case where the next arg might be a flag or empty
+    dir="."
+    if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
+      dir="$1"
+      shift
+    fi
+    project_dir="$(abs_path "${dir}")"
     build_docker_args "${project_dir}"
-    exec docker run "${DOCKER_ARGS[@]}" bash
+    exec docker run "${DOCKER_ARGS[@]}" bash "$@"
     ;;
   run)
     ensure_image
+    # Require project_dir as first non-flag arg
     if [[ $# -lt 2 ]]; then
       usage
       exit 2
@@ -193,7 +200,12 @@ case "${command}" in
     ;;
   versions)
     ensure_image
-    project_dir="$(abs_path "${1:-.}")"
+    dir="."
+    if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
+      dir="$1"
+      shift
+    fi
+    project_dir="$(abs_path "${dir}")"
     build_docker_args "${project_dir}"
     exec docker run "${DOCKER_ARGS[@]}" bash -lc \
       'printf "mise: "; mise --version; printf "python: "; python --version; printf "node: "; node --version; printf "pnpm: "; pnpm --version; printf "uv: "; uv --version; printf "git: "; git --version; printf "gh: "; gh --version | head -n 1'

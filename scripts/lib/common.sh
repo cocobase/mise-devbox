@@ -66,6 +66,6 @@ EOF
 # -----------------------------------------------------------------------------
 # Shared constants
 # -----------------------------------------------------------------------------
-TOOLCHAIN_IMAGE="${TOOLCHAIN_IMAGE:-ai-dev-toolchain:latest}"
+TOOLCHAIN_IMAGE="${TOOLCHAIN_IMAGE:-ai-dev-toolchain:refactored}"
 NETWORK_NAME="agent-network"
 VOLUME_NAME="qdrant_data"

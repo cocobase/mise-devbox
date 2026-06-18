@@ -204,14 +204,14 @@ uv = "0.11.16"
 docker build \
   --build-arg USE_CHINA_MIRROR=true \
   --build-arg APT_MIRROR=aliyun \
-  -t ai-dev-toolchain:latest \
+  -t ai-dev-toolchain:refactored \
   -f docker/Dockerfile .
 ```
 
 ### 4.2 海外/默认
 
 ```bash
-docker build -t ai-dev-toolchain:latest -f docker/Dockerfile .
+docker build -t ai-dev-toolchain:refactored -f docker/Dockerfile .
 ```
 
 ---

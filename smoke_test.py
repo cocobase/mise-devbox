@@ -23,7 +23,7 @@ from pathlib import Path
 # -----------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).parent.resolve()
 MISE_PATH = PROJECT_ROOT / ".mise.toml"
-IMAGE_NAME = "ai-dev-toolchain:latest"
+IMAGE_NAME = "ai-dev-toolchain:refactored"
 NETWORK_NAME = "agent-network"
 VOLUME_NAME = "qdrant_data"
 MARKER_FILE = PROJECT_ROOT / ".smoke_test_marker"
