@@ -68,12 +68,39 @@ def load_mise_versions():
 
 def ensure_infra_running():
     """Ensure docker-compose infrastructure is up."""
-    run(f"{DOCKER_COMPOSE} up -d", check=False)
+    run("scripts/compose up -d", check=False)
 
 
 def cleanup_marker():
     """Remove the temporary marker file if it exists."""
     MARKER_FILE.unlink(missing_ok=True)
+
+
+def harness_container_ids():
+    """Return containers owned by the harness scripts."""
+    ids = set()
+    filters = [
+        "name=^/agent-redis$",
+        "name=^/agent-qdrant$",
+        f"ancestor={IMAGE_NAME}",
+    ]
+    for docker_filter in filters:
+        result = run(f"docker ps -aq --filter '{docker_filter}'", check=False)
+        for container_id in result.stdout.splitlines():
+            if container_id.strip():
+                ids.add(container_id.strip())
+    return sorted(ids)
+
+
+def network_container_ids(network_name):
+    """Return container ids connected to a Docker network."""
+    result = run(
+        f"docker network inspect {network_name} --format '{{{{range $id, $_ := .Containers}}}}{{{{println $id}}}}{{{{end}}}}'",
+        check=False,
+    )
+    if result.returncode != 0:
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 # -----------------------------------------------------------------------------
@@ -149,19 +176,14 @@ def test_03_down_removes_containers():
     """scripts/task-harness-up → scripts/task-harness-down 后，无业务容器残留。"""
     print("\n[TEST 03] Standard down removes harness containers")
 
-    # Prune any leftover stopped containers (e.g., Docker build intermediates)
-    # so they don't interfere with the assertion.
-    run("docker container prune -f", check=False, capture_output=True)
-
     ensure_infra_running()
     run("scripts/task-harness-down", check=False)
 
-    result = run("docker ps -aq", check=False)
-    containers = result.stdout.strip()
+    containers = harness_container_ids()
 
     if containers:
         print(f"  ❌ Containers still exist after down:")
-        print(f"     {containers}")
+        print(f"     {' '.join(containers)}")
         return False
     print("  ✅ No harness containers remaining after down")
     return True
@@ -194,6 +216,9 @@ def test_05_clean_removes_network_and_image():
     networks = result.stdout.strip().split("\n")
     if NETWORK_NAME in networks:
         print(f"  ❌ {NETWORK_NAME} still exists after clean")
+        attached = network_container_ids(NETWORK_NAME)
+        if attached:
+            print(f"     Attached containers: {' '.join(attached)}")
         return False
     print(f"  ✅ {NETWORK_NAME} removed")
 

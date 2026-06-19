@@ -36,17 +36,23 @@ mise run harness-check
 
 检查内容包括：
 
+- Homebrew 是否存在（基础依赖，缺失会阻断流程）
 - mise 是否可用
 - Docker CLI 是否可用
 - Docker daemon 是否正在运行
 - Docker Compose 是否可用
-- Homebrew 是否存在
 - 宿主机硬件资源画像（CPU、内存、架构）
 - 网络环境归属检测（国内/海外）与下载源延迟排名测速
 
 宿主机画像结果与最优镜像推荐会持久化在 `~/.config/ai-harness/host-profile.toml`，供后续构建自动消费。
 
-Homebrew 检查是提示性的，不是硬性阻塞项。
+Homebrew 是本工具链最基础的包管理工具，缺失时 `check-host` 会提示安装并阻断后续流程。可使用脚本通过清华源安装：
+
+```bash
+scripts/install-brew
+```
+
+`check-host` 使用 Bash/awk 读写宿主机画像 TOML，不依赖 Python 3.11+ 或 `tomli`。`python3` 仅作为后续扩展的可选工具存在，缺失时不会阻塞宿主机画像生成。
 
 ## API Key 检查
 

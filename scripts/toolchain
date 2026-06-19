@@ -195,7 +195,12 @@ case "${command}" in
     fi
     project_dir="$(abs_path "${dir}")"
     build_docker_args "${project_dir}"
-    exec docker run "${DOCKER_ARGS[@]}" bash "$@"
+    ec=0
+    docker run "${DOCKER_ARGS[@]}" bash "$@" || ec=$?
+    if [[ $ec -ge 128 ]]; then
+      exit $ec
+    fi
+    exit 0
     ;;
   run)
     ensure_image

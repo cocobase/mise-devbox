@@ -40,6 +40,18 @@ Install: brew install mise (macOS) or curl https://mise.run | sh
 EOF
 }
 
+print_homebrew_install() {
+  cat <<'EOF'
+
+Homebrew is required but was not found.
+Homebrew is the baseline package manager for this toolchain. Install it first to keep the host setup flow working reliably.
+
+Run this command from the project root:
+
+  scripts/install-brew
+EOF
+}
+
 print_docker_install() {
   cat <<'EOF'
 
@@ -66,7 +78,23 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
-# 1. Machine Environment Check
+# 1. Homebrew Check
+# -----------------------------------------------------------------------------
+check_homebrew() {
+  log_info "Checking Homebrew..."
+
+  if ! command -v brew >/dev/null 2>&1; then
+    print_homebrew_install
+    MISSING=1
+  else
+    local brew_ver
+    brew_ver=$(brew --version 2>/dev/null | head -n 1 || echo "unknown")
+    log_ok "homebrew: ${brew_ver}"
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# 2. Machine Environment Check
 # -----------------------------------------------------------------------------
 check_machine_resources() {
   log_info "Profiling machine resources..."
@@ -102,7 +130,7 @@ check_machine_resources() {
 }
 
 # -----------------------------------------------------------------------------
-# 2. Docker Ecosystem Check
+# 3. Docker Ecosystem Check
 # -----------------------------------------------------------------------------
 check_docker_ecosystem() {
   log_info "Checking Docker ecosystem..."
@@ -149,7 +177,7 @@ check_docker_ecosystem() {
 }
 
 # -----------------------------------------------------------------------------
-# 3. Network Environment Detection
+# 4. Network Environment Detection
 # -----------------------------------------------------------------------------
 detect_network_environment() {
   log_info "Detecting network environment..."
@@ -168,7 +196,7 @@ detect_network_environment() {
 }
 
 # -----------------------------------------------------------------------------
-# 4. Download Source Speed Test
+# 5. Download Source Speed Test
 # -----------------------------------------------------------------------------
 benchmark_mirrors() {
   log_info "Benchmarking download mirrors (this may take a moment)..."
@@ -219,7 +247,7 @@ benchmark_mirrors() {
 }
 
 # -----------------------------------------------------------------------------
-# 5. Generate Recommendations
+# 6. Generate Recommendations
 # -----------------------------------------------------------------------------
 generate_recommendations() {
   local location
@@ -266,6 +294,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Start profiling
+check_homebrew
+
+if [[ "${MISSING}" -ne 0 ]]; then
+  log_err "Host checks failed. Please install Homebrew before continuing."
+  exit 1
+fi
+
 check_machine_resources
 check_docker_ecosystem
 

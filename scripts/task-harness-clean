@@ -20,14 +20,29 @@ fi
 
 echo "[harness-clean] Stopping infrastructure and removing volumes..."
 if [[ "${#COMPOSE_ARGS[@]}" -gt 0 ]]; then
-  "${SCRIPT_DIR}/compose" "${COMPOSE_ARGS[@]}" down --volumes
+  "${SCRIPT_DIR}/compose" "${COMPOSE_ARGS[@]}" down --volumes --remove-orphans
 else
-  "${SCRIPT_DIR}/compose" down --volumes
+  "${SCRIPT_DIR}/compose" down --volumes --remove-orphans
 fi
+
+echo "[harness-clean] Removing infrastructure containers..."
+for container in agent-redis agent-qdrant; do
+  if docker ps -aq --filter "name=^/${container}$" | grep -q .; then
+    docker rm -f "${container}" >/dev/null 2>&1 || true
+  fi
+done
 
 echo "[harness-clean] Removing toolchain containers..."
 if docker ps -aq --filter "ancestor=${TOOLCHAIN_IMAGE}" | grep -q .; then
   docker ps -aq --filter "ancestor=${TOOLCHAIN_IMAGE}" | xargs docker rm -f >/dev/null 2>&1 || true
+fi
+
+echo "[harness-clean] Removing containers attached to agent-network..."
+if docker network inspect agent-network >/dev/null 2>&1; then
+  attached_containers="$(docker network inspect agent-network --format '{{range $id, $_ := .Containers}}{{println $id}}{{end}}' 2>/dev/null || true)"
+  if [[ -n "${attached_containers}" ]]; then
+    echo "${attached_containers}" | xargs docker rm -f >/dev/null 2>&1 || true
+  fi
 fi
 
 echo "[harness-clean] Removing toolchain image..."
@@ -44,7 +59,11 @@ fi
 echo "[harness-clean] Verifying networks..."
 if docker network ls | grep -q "agent-network"; then
   docker network rm agent-network >/dev/null 2>&1 || true
-  echo "[harness-clean] ✅ agent-network removed."
+  if docker network ls --format '{{.Name}}' | grep -qx "agent-network"; then
+    echo "[harness-clean] ⚠️  agent-network still exists."
+  else
+    echo "[harness-clean] ✅ agent-network removed."
+  fi
 else
   echo "[harness-clean] ✅ No agent-network found."
 fi

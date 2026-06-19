@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    printf 'Missing required command: %s\n' "${cmd}" >&2
+    return 1
+  fi
+}
+
+print_shellenv_hint() {
+  local brew_bin=""
+
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    brew_bin="/opt/homebrew/bin/brew"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    brew_bin="/usr/local/bin/brew"
+  elif command -v brew >/dev/null 2>&1; then
+    brew_bin="$(command -v brew)"
+  fi
+
+  if [[ -z "${brew_bin}" ]]; then
+    return
+  fi
+
+  cat <<EOF
+
+Add Homebrew to your shell profile if brew is not found in a new terminal:
+
+  echo 'eval "\$(${brew_bin} shellenv)"' >> ~/.zprofile
+  eval "\$(${brew_bin} shellenv)"
+EOF
+}
+
+if command -v brew >/dev/null 2>&1; then
+  brew --version | head -n 1
+  printf 'Homebrew is already installed.\n'
+  exit 0
+fi
+
+require_cmd git
+require_cmd curl
+
+if [[ ! -x /bin/bash ]]; then
+  printf 'Missing required command: /bin/bash\n' >&2
+  exit 1
+fi
+
+if [[ "${OSTYPE:-}" == darwin* ]] && ! xcode-select -p >/dev/null 2>&1; then
+  cat <<'EOF'
+Xcode Command Line Tools are required before installing Homebrew.
+Run this command first, then rerun scripts/install-brew:
+
+  xcode-select --install
+EOF
+  exit 1
+fi
+
+export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
+export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
+export HOMEBREW_INSTALL_FROM_API=1
+export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
+export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
+
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/install-brew.XXXXXX")"
+trap 'rm -rf "${tmp_dir}"' EXIT
+
+printf 'Installing Homebrew with the Tsinghua mirror...\n'
+git clone --depth=1 https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install.git "${tmp_dir}/brew-install"
+/bin/bash "${tmp_dir}/brew-install/install.sh"
+
+print_shellenv_hint
