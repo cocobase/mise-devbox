@@ -75,6 +75,29 @@ HOST_PROFILE="${HOST_PROFILE_DIR}/host-profile.toml"
 PROFILE_VERSION=1
 
 # -----------------------------------------------------------------------------
+# TOML parser availability
+# -----------------------------------------------------------------------------
+if ! python3 -c "
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+" >/dev/null 2>&1; then
+  log_err "Python TOML parser not found."
+  cat <<'EOF'
+
+This script requires Python 3.11+ or the 'tomli' package.
+
+Options:
+  1. Install Python 3.11+ (recommended):
+       brew install python@3.11
+  2. Or install tomli for your current Python:
+       python3 -m pip install tomli
+EOF
+  exit 1
+fi
+
+# -----------------------------------------------------------------------------
 # Utility functions
 # -----------------------------------------------------------------------------
 
@@ -106,7 +129,11 @@ read_toml_kv() {
   # Simple python one-liner to read TOML value
   # Keys like "recommendations.use_china_mirror" are split by dot.
   python3 -c "
-import tomllib, sys
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+
 try:
     with open('${HOST_PROFILE}', 'rb') as f:
         data = tomllib.load(f)
@@ -143,7 +170,11 @@ write_toml_kv() {
   # Since tomllib is read-only, we use a simple dict update and manual write for this specific case,
   # or just use a python script that handles the update.
   python3 -c "
-import tomllib, sys, os
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+import sys, os
 
 profile = '${HOST_PROFILE}'
 section = '${section}'
