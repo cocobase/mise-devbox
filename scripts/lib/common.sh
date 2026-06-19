@@ -75,26 +75,10 @@ HOST_PROFILE="${HOST_PROFILE_DIR}/host-profile.toml"
 PROFILE_VERSION=1
 
 # -----------------------------------------------------------------------------
-# TOML parser availability
+# Optional Python availability
 # -----------------------------------------------------------------------------
-if ! python3 -c "
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
-" >/dev/null 2>&1; then
-  log_err "Python TOML parser not found."
-  cat <<'EOF'
-
-This script requires Python 3.11+ or the 'tomli' package.
-
-Options:
-  1. Install Python 3.11+ (recommended):
-       brew install python@3.11
-  2. Or install tomli for your current Python:
-       python3 -m pip install tomli
-EOF
-  exit 1
+if ! command -v python3 >/dev/null 2>&1; then
+  log_warn "python3 not found; continuing because host profile TOML handling is pure Bash/awk."
 fi
 
 # -----------------------------------------------------------------------------
@@ -118,97 +102,154 @@ require_cmd() {
 # Read a value from the host profile TOML.
 # Usage: read_toml_kv "recommendations.use_china_mirror" "false"
 read_toml_kv() {
-  local key="$1"
+  local dotted_key="$1"
   local default="${2:-}"
+  local section="${dotted_key%.*}"
+  local key="${dotted_key##*.}"
 
   if [[ ! -f "${HOST_PROFILE}" ]]; then
     echo "${default}"
     return
   fi
 
-  # Simple python one-liner to read TOML value
-  # Keys like "recommendations.use_china_mirror" are split by dot.
-  python3 -c "
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
-
-try:
-    with open('${HOST_PROFILE}', 'rb') as f:
-        data = tomllib.load(f)
-    keys = '${key}'.split('.')
-    val = data
-    for k in keys:
-        val = val[k]
-    if isinstance(val, bool):
-        print(str(val).lower())
-    else:
-        print(val)
-except Exception:
-    print('${default}')
-"
+  awk -v target_section="${section}" -v target_key="${key}" -v default_value="${default}" '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+    function strip_inline_comment(s,    i, c, prev, quote, out) {
+      quote = ""
+      out = ""
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        prev = (i > 1) ? substr(s, i - 1, 1) : ""
+        if ((c == "\"" || c == "'\''") && prev != "\\") {
+          if (quote == "") quote = c
+          else if (quote == c) quote = ""
+        }
+        if (c == "#" && quote == "") break
+        out = out c
+      }
+      return trim(out)
+    }
+    function normalize_value(s, lower) {
+      s = strip_inline_comment(s)
+      if ((substr(s, 1, 1) == "\"" && substr(s, length(s), 1) == "\"") ||
+          (substr(s, 1, 1) == "'\''" && substr(s, length(s), 1) == "'\''")) {
+        s = substr(s, 2, length(s) - 2)
+      }
+      lower = tolower(s)
+      if (lower == "true" || lower == "false") return lower
+      return s
+    }
+    BEGIN {
+      current_section = ""
+      found = 0
+    }
+    /^[[:space:]]*\[[^][]+\][[:space:]]*([#].*)?$/ {
+      line = $0
+      sub(/^[[:space:]]*\[/, "", line)
+      sub(/\][[:space:]]*([#].*)?$/, "", line)
+      current_section = trim(line)
+      next
+    }
+    current_section == target_section {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (line ~ ("^" target_key "[[:space:]]*=")) {
+        sub(("^" target_key "[[:space:]]*=[[:space:]]*"), "", line)
+        print normalize_value(line)
+        found = 1
+        exit
+      }
+    }
+    END {
+      if (!found) print default_value
+    }
+  ' "${HOST_PROFILE}"
 }
 
 # Write a key-value pair to the host profile TOML.
-# This is a simplified version that handles basic structure.
 # Usage: write_toml_kv "network" "location" "china"
 write_toml_kv() {
   local section="$1"
   local key="$2"
   local value="$3"
+  local formatted_value
+  local tmp_file
 
   mkdir -p "${HOST_PROFILE_DIR}"
 
   if [[ ! -f "${HOST_PROFILE}" ]]; then
-    echo "[meta]" > "${HOST_PROFILE}"
-    echo "version = ${PROFILE_VERSION}" >> "${HOST_PROFILE}"
-    echo "generated_at = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"" >> "${HOST_PROFILE}"
+    {
+      printf '[meta]\n'
+      printf 'version = %s\n' "${PROFILE_VERSION}"
+      printf 'generated_at = "%s"\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    } > "${HOST_PROFILE}"
   fi
 
-  # Use python to update/add the value
-  # Since tomllib is read-only, we use a simple dict update and manual write for this specific case,
-  # or just use a python script that handles the update.
-  python3 -c "
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
-import sys, os
+  case "${value}" in
+    [Tt][Rr][Uu][Ee]) formatted_value="true" ;;
+    [Ff][Aa][Ll][Ss][Ee]) formatted_value="false" ;;
+    ''|*[!0-9]*)
+      value="${value//\\/\\\\}"
+      value="${value//\"/\\\"}"
+      formatted_value="\"${value}\""
+      ;;
+    *) formatted_value="${value}" ;;
+  esac
 
-profile = '${HOST_PROFILE}'
-section = '${section}'
-key = '${key}'
-value = '${value}'
-
-# Convert to appropriate type
-if value.lower() == 'true': value = True
-elif value.lower() == 'false': value = False
-elif value.isdigit(): value = int(value)
-
-data = {}
-if os.path.exists(profile):
-    with open(profile, 'rb') as f:
-        try:
-            data = tomllib.load(f)
-        except: pass
-
-if section not in data:
-    data[section] = {}
-data[section][key] = value
-
-def format_val(v):
-    if isinstance(v, bool): return str(v).lower()
-    if isinstance(v, int): return str(v)
-    return f'\"{v}\"'
-
-with open(profile, 'w') as f:
-    for s, kvs in data.items():
-        f.write(f'[{s}]\n')
-        for k, v in kvs.items():
-            f.write(f'{k} = {format_val(v)}\n')
-        f.write('\n')
-"
+  tmp_file="$(mktemp "${HOST_PROFILE}.tmp.XXXXXX")"
+  awk -v target_section="${section}" -v target_key="${key}" -v target_value="${formatted_value}" '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+    function print_pending_key() {
+      if (in_target && !key_written) {
+        print target_key " = " target_value
+        key_written = 1
+      }
+    }
+    BEGIN {
+      current_section = ""
+      in_target = 0
+      section_found = 0
+      key_written = 0
+    }
+    /^[[:space:]]*\[[^][]+\][[:space:]]*([#].*)?$/ {
+      print_pending_key()
+      line = $0
+      sub(/^[[:space:]]*\[/, "", line)
+      sub(/\][[:space:]]*([#].*)?$/, "", line)
+      current_section = trim(line)
+      in_target = (current_section == target_section)
+      if (in_target) section_found = 1
+      print
+      next
+    }
+    in_target {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (line ~ ("^" target_key "[[:space:]]*=")) {
+        print target_key " = " target_value
+        key_written = 1
+        next
+      }
+    }
+    { print }
+    END {
+      print_pending_key()
+      if (!section_found) {
+        if (NR > 0) print ""
+        print "[" target_section "]"
+        print target_key " = " target_value
+      }
+    }
+  ' "${HOST_PROFILE}" > "${tmp_file}"
+  mv "${tmp_file}" "${HOST_PROFILE}"
 }
 
 # Measure latency of a URL using curl.

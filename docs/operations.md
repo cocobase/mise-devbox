@@ -48,6 +48,8 @@ mise run harness-check
 
 Homebrew 检查是提示性的，不是硬性阻塞项。
 
+`check-host` 使用 Bash/awk 读写宿主机画像 TOML，不依赖 Python 3.11+ 或 `tomli`。`python3` 仅作为后续扩展的可选工具存在，缺失时不会阻塞宿主机画像生成。
+
 ## API Key 检查
 
 全局 `harness-*` 命令会把当前终端里已有的常见 AI 服务环境变量带入容器，例如：
