@@ -1,0 +1,7 @@
+# 国内镜像下 mise 工具下载源配置
+[settings]
+node.mirror_url = "https://npmmirror.com/mirrors/node/"
+
+[settings.url_replacements]
+"regex:^https://github\\.com/astral-sh/uv/releases/download/([^/]+)/(.+)" = "https://releases.astral.sh/github/uv/releases/download/$1/$2"
+"regex:^https://github\\.com/astral-sh/python-build-standalone/releases/download/([^/]+)/(.+)" = "https://mirrors.ustc.edu.cn/github-release/astral-sh/python-build-standalone/$1/$2"

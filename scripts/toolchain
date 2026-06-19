@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE="${TOOLCHAIN_IMAGE:-ai-dev-toolchain:latest}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
 
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+IMAGE="${TOOLCHAIN_IMAGE}"
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
 usage() {
   cat <<'USAGE'
 Usage:
@@ -23,17 +33,14 @@ abs_path() {
   if [[ ! -e "${target}" ]]; then
     mkdir -p "${target}"
   fi
-
   cd "${target}" >/dev/null 2>&1
   pwd -P
 }
 
-docker_args() {
+# Add core docker run arguments (user, workspace mount, etc.)
+add_core_args() {
   local project_dir="$1"
-  local uid
-  local gid
-  local user
-
+  local uid gid user
   uid="$(id -u)"
   gid="$(id -g)"
   user="$(id -un)"
@@ -46,36 +53,171 @@ docker_args() {
     "-v" "${project_dir}:/workspace"
     "-w" "/workspace"
   )
+}
 
+# Add whitelisted environment variables for AI services and infrastructure.
+add_env_args() {
+  local key
+  for key in $(compgen -v); do
+    if [[ -n "${!key:-}" ]]; then
+      case "${key}" in
+        OPENAI_*|ANTHROPIC_*|GOOGLE_*|LANGCHAIN_*|AZURE_*|MISTRAL_*|GROQ_*|COHERE_*|HF_*|*_API_KEY)
+          DOCKER_ARGS+=("-e" "${key}")
+          ;;
+      esac
+    fi
+  done
+
+  for key in REDIS_URL QDRANT_HOST QDRANT_PORT; do
+    if [[ -n "${!key:-}" ]]; then
+      DOCKER_ARGS+=("-e" "${key}")
+    fi
+  done
+}
+
+# Add identity/auth mounts: git, GitHub CLI, SSH agent, GPG.
+add_auth_mounts() {
+  local user home
+  user="$(id -un)"
+  home="${HOME}"
+
+  if [[ -f "${home}/.gitconfig" ]]; then
+    DOCKER_ARGS+=("-v" "${home}/.gitconfig:/home/${user}/.gitconfig:ro")
+  fi
+
+  if [[ -d "${home}/.config/gh" ]]; then
+    DOCKER_ARGS+=("-v" "${home}/.config/gh:/home/${user}/.config/gh:ro")
+  fi
+
+  if [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "${SSH_AUTH_SOCK}" ]]; then
+    DOCKER_ARGS+=("-e" "SSH_AUTH_SOCK=${SSH_AUTH_SOCK}")
+    DOCKER_ARGS+=("-v" "${SSH_AUTH_SOCK}:${SSH_AUTH_SOCK}:ro")
+  fi
+
+  if [[ -d "${home}/.gnupg" ]]; then
+    DOCKER_ARGS+=("-v" "${home}/.gnupg:/home/${user}/.gnupg")
+  fi
+}
+
+# Add tool cache mounts for pnpm and uv.
+add_cache_mounts() {
+  local user home
+  user="$(id -un)"
+  home="${HOME}"
+
+  if [[ -d "${home}/.local/share/pnpm" ]]; then
+    DOCKER_ARGS+=("-v" "${home}/.local/share/pnpm:/home/${user}/.local/share/pnpm")
+  fi
+
+  if [[ -d "${home}/.cache/uv" ]]; then
+    DOCKER_ARGS+=("-v" "${home}/.cache/uv:/home/${user}/.cache/uv")
+  fi
+}
+
+# Add network attachment if agent-network exists.
+add_network_arg() {
+  if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
+    DOCKER_ARGS+=("--network" "${NETWORK_NAME}")
+  fi
+}
+
+# Add interactive TTY flags when running in a terminal.
+add_tty_args() {
   if [[ -t 0 && -t 1 ]]; then
     DOCKER_ARGS+=("-it")
   fi
+}
 
+# Build the full docker args array.
+build_docker_args() {
+  local project_dir="$1"
+  add_core_args "${project_dir}"
+  add_env_args
+  add_auth_mounts
+  add_cache_mounts
+  add_network_arg
+  add_tty_args
   DOCKER_ARGS+=("${IMAGE}")
 }
 
+# Ensure the toolchain image exists, building it if necessary.
+ensure_image() {
+  if docker image inspect "${IMAGE}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "[toolchain] ⚠️  Image ${IMAGE} not found. Building now (first build may take a few minutes)..."
+
+  local global_mode=0
+  if [[ -n "${AI_HARNESS_HOME:-}" ]]; then
+    if [[ "${SCRIPT_DIR}" == "${AI_HARNESS_HOME}/scripts" ]]; then
+      global_mode=1
+    fi
+  fi
+
+  local build_context dockerfile
+  if [[ "${global_mode}" -eq 1 ]]; then
+    build_context="${AI_HARNESS_HOME}"
+    dockerfile="${AI_HARNESS_HOME}/docker/Dockerfile"
+  else
+    build_context="${SCRIPT_DIR}/.."
+    dockerfile="${SCRIPT_DIR}/../docker/Dockerfile"
+  fi
+
+  local build_args=()
+  if [[ -f "${HOST_PROFILE:-}" ]]; then
+    local use_china_mirror apt_mirror_name npm_registry
+    use_china_mirror=$(read_toml_kv "recommendations.use_china_mirror" "false")
+    apt_mirror_name=$(read_toml_kv "recommendations.apt_mirror_name" "aliyun")
+    npm_registry=$(read_toml_kv "recommendations.npm_registry" "https://registry.npmmirror.com")
+    build_args+=("--build-arg" "USE_CHINA_MIRROR=${use_china_mirror}")
+    build_args+=("--build-arg" "APT_MIRROR_NAME=${apt_mirror_name}")
+    build_args+=("--build-arg" "NPM_REGISTRY=${npm_registry}")
+  fi
+
+  docker build "${build_args[@]}" -t "${IMAGE}" -f "${dockerfile}" "${build_context}"
+}
+
+# -----------------------------------------------------------------------------
+# Main dispatcher
+# -----------------------------------------------------------------------------
 command="${1:-}"
 shift || true
 
 case "${command}" in
   shell)
-    project_dir="$(abs_path "${1:-.}")"
-    docker_args "${project_dir}"
-    exec docker run "${DOCKER_ARGS[@]}" bash
+    ensure_image
+    # Handle the case where the next arg might be a flag or empty
+    dir="."
+    if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
+      dir="$1"
+      shift
+    fi
+    project_dir="$(abs_path "${dir}")"
+    build_docker_args "${project_dir}"
+    exec docker run "${DOCKER_ARGS[@]}" bash "$@"
     ;;
   run)
+    ensure_image
+    # Require project_dir as first non-flag arg
     if [[ $# -lt 2 ]]; then
       usage
       exit 2
     fi
     project_dir="$(abs_path "$1")"
     shift
-    docker_args "${project_dir}"
+    build_docker_args "${project_dir}"
     exec docker run "${DOCKER_ARGS[@]}" "$@"
     ;;
   versions)
-    project_dir="$(abs_path "${1:-.}")"
-    docker_args "${project_dir}"
+    ensure_image
+    dir="."
+    if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
+      dir="$1"
+      shift
+    fi
+    project_dir="$(abs_path "${dir}")"
+    build_docker_args "${project_dir}"
     exec docker run "${DOCKER_ARGS[@]}" bash -lc \
       'printf "mise: "; mise --version; printf "python: "; python --version; printf "node: "; node --version; printf "pnpm: "; pnpm --version; printf "uv: "; uv --version; printf "git: "; git --version; printf "gh: "; gh --version | head -n 1'
     ;;

@@ -1,0 +1,33 @@
+services:
+  # State Storage (Agent memory/cache)
+  redis:
+    image: redis:alpine
+    container_name: agent-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - agent-network
+
+  # Vector Database (Agent knowledge base)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: agent-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - agent-network
+
+  # The toolchain container as a service (optional but useful for orchestration)
+  # For now, we'll continue to run it via mise tasks for interactive dev,
+  # but we define the network here so they can talk.
+
+networks:
+  agent-network:
+    name: agent-network
+    driver: bridge
+
+volumes:
+  qdrant_data:

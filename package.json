@@ -1,0 +1,19 @@
+{
+  "name": "ai-agent-harness",
+  "version": "0.1.0",
+  "description": "A minimal AI-Agent harness toolchain",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "langchain": "^0.3.0",
+    "redis": "^4.7.0",
+    "@qdrant/js-client-rest": "^1.9.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "@types/node": "^20.12.12"
+  }
+}

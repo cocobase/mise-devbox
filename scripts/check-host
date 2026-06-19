@@ -1,25 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-missing=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+
+# -----------------------------------------------------------------------------
+# Configuration & State
+# -----------------------------------------------------------------------------
+DRY_RUN=0
+AUTO_APPLY=0
+REFRESH=0
+MISSING=0
+
+# -----------------------------------------------------------------------------
+# Help Functions
+# -----------------------------------------------------------------------------
+usage() {
+  cat <<EOF
+Usage: scripts/check-host [options]
+
+Options:
+  -y, --yes, --auto-apply  Apply recommendations without asking
+  --dry-run                Check environment but don't write profile
+  --refresh                Force re-benchmarking even if profile exists
+  -h, --help               Show this help message
+
+Description:
+  Host Profiler: Environment checks + Network detection + Mirror benchmarking.
+  Results are saved to ${HOST_PROFILE}.
+EOF
+}
 
 print_mise_install() {
   cat <<'EOF'
 
 mise is required but was not found.
-
-Install mise on macOS:
-  brew install mise
-
-Or install with the official script:
-  curl https://mise.run | sh
-
-After installation, activate it in your shell. For zsh:
-  echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
-  exec zsh
-
-Verify:
-  mise --version
+Install: brew install mise (macOS) or curl https://mise.run | sh
 EOF
 }
 
@@ -27,22 +44,8 @@ print_docker_install() {
   cat <<'EOF'
 
 Docker is required but was not found.
-
-Option 1: install Docker Desktop on macOS:
-  brew install --cask docker
-
-Or download it from:
-  https://www.docker.com/products/docker-desktop/
-
-Option 2: install Colima with Docker CLI:
-  brew install colima docker
-  colima start --runtime docker --cpu 4 --memory 8
-
-After installation:
-  1. Start Docker Desktop or Colima.
-  2. Wait until the Docker daemon is running.
-  3. Verify:
-     docker version
+Option 1: brew install --cask docker (Docker Desktop)
+Option 2: brew install colima docker (Colima)
 EOF
 }
 
@@ -50,51 +53,269 @@ print_docker_daemon_help() {
   if command -v colima >/dev/null 2>&1; then
     cat <<'EOF'
 
-Docker CLI is installed, but Docker daemon is not reachable.
-
-Colima is installed. Start Colima's Docker runtime:
-  colima start --runtime docker --cpu 4 --memory 8
-
-Then verify:
-  docker version
+Docker CLI is installed, but daemon is not reachable.
+Start Colima: colima start --runtime docker --cpu 4 --memory 8
 EOF
   else
     cat <<'EOF'
 
-Docker CLI is installed, but Docker daemon is not reachable.
-
-Start one Docker runtime:
-
-Option 1: Docker Desktop
-  open -a Docker
-
-Option 2: Colima
-  brew install colima
-  colima start --runtime docker --cpu 4 --memory 8
-
-Then verify:
-  docker version
+Docker CLI is installed, but daemon is not reachable.
+Start Docker Desktop or Colima.
 EOF
   fi
 }
 
-if ! command -v mise >/dev/null 2>&1; then
-  print_mise_install
-  missing=1
-fi
+# -----------------------------------------------------------------------------
+# 1. Machine Environment Check
+# -----------------------------------------------------------------------------
+check_machine_resources() {
+  log_info "Profiling machine resources..."
 
-if ! command -v docker >/dev/null 2>&1; then
-  print_docker_install
-  missing=1
-elif ! docker info >/dev/null 2>&1; then
-  print_docker_daemon_help
-  missing=1
-fi
+  local arch
+  arch=$(uname -m)
+  case "${arch}" in
+    x86_64) arch="amd64" ;;
+    arm64)  arch="arm64" ;;
+  esac
+  write_toml_kv "host" "arch" "${arch}"
 
-if [[ "${missing}" -ne 0 ]]; then
+  local ncpu
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    ncpu=$(sysctl -n hw.ncpu)
+  else
+    ncpu=$(nproc)
+  fi
+  write_toml_kv "host" "cpu_cores" "${ncpu}"
+
+  local mem_gb
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    # Rough estimate for macOS
+    local mem_bytes
+    mem_bytes=$(sysctl -n hw.memsize)
+    mem_gb=$((mem_bytes / 1024 / 1024 / 1024))
+  else
+    mem_gb=$(free -g | awk '/^Mem:/{print $2}')
+  fi
+  write_toml_kv "host" "memory_gb" "${mem_gb}"
+
+  log_ok "Host: ${arch}, ${ncpu} cores, ${mem_gb}GB RAM"
+}
+
+# -----------------------------------------------------------------------------
+# 2. Docker Ecosystem Check
+# -----------------------------------------------------------------------------
+check_docker_ecosystem() {
+  log_info "Checking Docker ecosystem..."
+
+  # mise
+  if ! ver=$(require_cmd "mise" "--version"); then
+    print_mise_install
+    MISSING=1
+  else
+    log_ok "mise: ${ver}"
+  fi
+
+  # Docker
+  if ! command -v docker >/dev/null 2>&1; then
+    print_docker_install
+    MISSING=1
+  elif ! docker info >/dev/null 2>&1; then
+    print_docker_daemon_help
+    MISSING=1
+  else
+    local docker_ver
+    docker_ver=$(docker --version 2>/dev/null || echo "unknown")
+    log_ok "docker: ${docker_ver}"
+
+    # Platform detection
+    local platform="unknown"
+    if docker info 2>/dev/null | grep -qi "colima"; then
+      platform="colima"
+    elif docker info 2>/dev/null | grep -qi "docker desktop"; then
+      platform="desktop"
+    fi
+    write_toml_kv "host" "docker_platform" "${platform}"
+  fi
+
+  # Compose
+  if compose_cmd=$(detect_compose_cmd 2>/dev/null); then
+    local compose_ver
+    compose_ver=$("${compose_cmd}" version --short 2>/dev/null || echo "unknown")
+    log_ok "docker compose: ${compose_ver} (${compose_cmd})"
+  else
+    log_err "docker compose not found."
+    MISSING=1
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# 3. Network Environment Detection
+# -----------------------------------------------------------------------------
+detect_network_environment() {
+  log_info "Detecting network environment..."
+
+  local location="global"
+  # Quick check for China network: try to reach a well-known global site with low timeout
+  if ! curl -I -s --connect-timeout 2 https://google.com >/dev/null 2>&1; then
+    # If google fails, check if baidu works
+    if curl -I -s --connect-timeout 2 https://baidu.com >/dev/null 2>&1; then
+      location="china"
+    fi
+  fi
+
+  log_ok "Network location: ${location}"
+  write_toml_kv "network" "location" "${location}"
+}
+
+# -----------------------------------------------------------------------------
+# 4. Download Source Speed Test
+# -----------------------------------------------------------------------------
+benchmark_mirrors() {
+  log_info "Benchmarking download mirrors (this may take a moment)..."
+
+  # Apt
+  local apt_mirrors=("archive.ubuntu.com" "mirrors.aliyun.com" "mirrors.tuna.tsinghua.edu.cn" "mirrors.ustc.edu.cn")
+  log_info "Testing Apt mirrors..."
+  local fastest_apt
+  fastest_apt=$(rank_mirrors "${apt_mirrors[@]/#/http://}")
+  fastest_apt=${fastest_apt#http://}
+  fastest_apt=${fastest_apt%/}
+  write_toml_kv "mirrors" "fastest_apt" "${fastest_apt:-archive.ubuntu.com}"
+
+  # Node
+  local node_mirrors=("nodejs.org" "npmmirror.com" "mirrors.tuna.tsinghua.edu.cn")
+  log_info "Testing Node.js mirrors..."
+  local fastest_node
+  fastest_node=$(rank_mirrors "${node_mirrors[@]/#/https://}")
+  fastest_node=${fastest_node#https://}
+  fastest_node=${fastest_node%/}
+  write_toml_kv "mirrors" "fastest_node" "${fastest_node:-nodejs.org}"
+
+  # npm
+  local npm_registries=("registry.npmjs.org" "registry.npmmirror.com")
+  log_info "Testing npm registries..."
+  local fastest_npm
+  fastest_npm=$(rank_mirrors "${npm_registries[@]/#/https://}")
+  # Keep full URL for registry
+  write_toml_kv "mirrors" "fastest_npm" "${fastest_npm:-https://registry.npmjs.org}"
+
+  # uv
+  local uv_mirrors=("github.com" "releases.astral.sh")
+  log_info "Testing uv mirrors..."
+  local fastest_uv
+  fastest_uv=$(rank_mirrors "${uv_mirrors[@]/#/https://}")
+  fastest_uv=${fastest_uv#https://}
+  fastest_uv=${fastest_uv%/}
+  write_toml_kv "mirrors" "fastest_uv" "${fastest_uv:-github.com}"
+
+  # Python
+  local py_mirrors=("github.com" "mirrors.ustc.edu.cn")
+  log_info "Testing python-build-standalone mirrors..."
+  local fastest_py
+  fastest_py=$(rank_mirrors "${py_mirrors[@]/#/https://}")
+  fastest_py=${fastest_py#https://}
+  fastest_py=${fastest_py%/}
+  write_toml_kv "mirrors" "fastest_python" "${fastest_py:-github.com}"
+}
+
+# -----------------------------------------------------------------------------
+# 5. Generate Recommendations
+# -----------------------------------------------------------------------------
+generate_recommendations() {
+  local location
+  location=$(read_toml_kv "network.location" "global")
+
+  if [[ "${location}" == "china" ]]; then
+    write_toml_kv "recommendations" "use_china_mirror" "true"
+
+    local fastest_apt
+    fastest_apt=$(read_toml_kv "mirrors.fastest_apt" "mirrors.aliyun.com")
+    local apt_name="aliyun"
+    [[ "${fastest_apt}" == *"tsinghua"* ]] && apt_name="tsinghua"
+    [[ "${fastest_apt}" == *"ustc"* ]] && apt_name="ustc"
+    write_toml_kv "recommendations" "apt_mirror_name" "${apt_name}"
+
+    local fastest_npm
+    fastest_npm=$(read_toml_kv "mirrors.fastest_npm" "https://registry.npmmirror.com")
+    write_toml_kv "recommendations" "npm_registry" "${fastest_npm}"
+
+    local fastest_node
+    fastest_node=$(read_toml_kv "mirrors.fastest_node" "npmmirror.com")
+    write_toml_kv "recommendations" "node_mirror_url" "https://${fastest_node}/mirrors/node/"
+  else
+    write_toml_kv "recommendations" "use_china_mirror" "false"
+    write_toml_kv "recommendations" "apt_mirror_name" "default"
+    write_toml_kv "recommendations" "npm_registry" "https://registry.npmjs.org"
+    write_toml_kv "recommendations" "node_mirror_url" "https://nodejs.org/dist/"
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# Main Execution
+# -----------------------------------------------------------------------------
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -y|--yes|--auto-apply) AUTO_APPLY=1; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    --refresh) REFRESH=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) log_err "Unknown option: $1"; usage; exit 1 ;;
+  esac
+done
+
+# Start profiling
+check_machine_resources
+check_docker_ecosystem
+
+if [[ "${MISSING}" -ne 0 ]]; then
+  log_err "Host checks failed. Please install missing components."
   exit 1
 fi
 
-printf 'Host toolchain checks passed.\n'
-printf 'mise: %s\n' "$(mise --version)"
-printf 'docker: %s\n' "$(docker --version)"
+# Benchmarking
+PROFILE_UPDATED=0
+if [[ "${REFRESH}" -eq 1 ]] || [[ ! -f "${HOST_PROFILE}" ]]; then
+  detect_network_environment
+  benchmark_mirrors
+  generate_recommendations
+  PROFILE_UPDATED=1
+else
+  log_info "Profile already exists at ${HOST_PROFILE}. Use --refresh to re-benchmark."
+fi
+
+# Summary & User Interaction
+printf "%s\n" "" "--- Host Profile Summary ---"
+if [[ -f "${HOST_PROFILE}" ]]; then
+  cat "${HOST_PROFILE}"
+else
+  log_err "No profile file found."
+fi
+printf "%s\n" "---------------------------"
+
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+  log_info "Dry-run mode: skipping profile application."
+else
+  if [[ "${PROFILE_UPDATED}" -eq 0 ]]; then
+    log_ok "Existing profile kept."
+  elif [[ "${AUTO_APPLY}" -eq 1 ]]; then
+    log_ok "Recommendations applied to ${HOST_PROFILE}"
+  else
+    printf "\nApply these recommendations? [y/N] "
+    # If stdin is not a tty (e.g. called from another script), don't block
+    if [[ -t 0 ]]; then
+      read -r response
+      if [[ "${response}" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+        log_ok "Profile saved and ready for use."
+      else
+        log_warn "Profile generated but not finalized. Build scripts may use defaults."
+      fi
+    else
+      log_warn "Non-interactive shell detected, automatically applying profile."
+      log_ok "Profile saved and ready for use."
+    fi
+  fi
+fi
+
+printf '\n🎉 Host toolchain profiling completed.\n'

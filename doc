@@ -1,0 +1,154 @@
+# AI-Agent Harness 工具链开发任务列表 (Project Plan)
+
+本计划致力于构建一个简洁易用的 AI-Agent 开发环境。所有开发任务均围绕 `@user-story.md` 中的用户场景与达成目标展开。
+
+## 🎯 核心达成指标 (Evaluation Metrics)
+
+1. **启动性能（热启动）**：执行 `mise run harness-up` 后，**5 秒内**自动进入容器 Shell。
+   *注：该指标仅针对「镜像已构建且 docker-compose 服务已预热」的热启动场景。冷启动（首次构建镜像）允许 1–3 分钟，并需向用户展示进度反馈。*
+2. **环境就绪**：容器内 `python`, `node`, `uv`, `pnpm` 必须可用且版本与 `docker/mise-global.toml` 配置对齐。
+3. **挂载验证**：宿主机当前目录必须实时同步至容器 `/workspace`。
+4. **清理完整性**：执行 `mise run harness-down` 后，`docker ps -a` 结果为空，且相关网络与进程无残留。
+
+---
+
+## 🚀 阶段一：宿主机环境优化 (`mise run harness-check`)
+
+*目标：确保新机器一键环境就绪，并解决网络访问瓶颈。*
+
+- [ ] **1.1 自检逻辑标准化**
+  将现有脚本集成到 `mise run harness-check` 任务中，覆盖：
+  - **mise**：检测命令是否存在、版本是否满足最低要求。
+  - **Docker CLI**：检测命令是否存在。
+  - **Docker Daemon**：检测 `docker info` 是否可达。
+  - **Colima**（若适用）：当 Docker Daemon 不可达且 `colima` 存在时，提示启动指令。
+  - **Homebrew**（提示性检查）：若缺失，给出安装命令；不作为阻塞项。
+
+- [ ] **1.2 安装引导增强**
+  为缺失的组件提供精准的 Copy-Paste 安装指令，按优先级排序：
+  1. Homebrew（macOS 包管理器）
+  2. mise
+  3. Docker Desktop 或 Colima
+  4. Docker Daemon 启动命令
+
+- [ ] **1.3 镜像源测速与自动配置**（优先级：P2，可延后）
+  - [ ] 编写轻量化测速逻辑（基于 `curl` 响应时间），从候选列表中自动选择最快的源。
+  - [ ] 自动配置 **Homebrew**、**Docker Mirror**、**pip**、**pnpm/npm** 的镜像源。
+  - [ ] **兜底逻辑**：若所有候选源均超时，保持默认配置并提示用户手动检查网络。
+
+---
+
+## 🚀 阶段二：沉浸式启动流 (`mise run harness-up`)
+
+*目标：实现“一键即工作”的极致体验，明确热启动 5 秒指标。*
+
+- [ ] **2.1 重构 `up` 任务为统一编排入口**
+  修改 `mise run harness-up`，使其按顺序执行以下步骤（任何一个步骤失败即中断并给出明确错误）：
+  1. **预检依赖**：隐式调用 `scripts/check-host`，确保宿主机环境就绪。
+  2. **启动基础设施**：`docker compose up -d`（Redis、Qdrant）。
+  3. **镜像校验/构建**：检测 `ai-dev:latest` 镜像是否存在。
+     - 若不存在：自动触发构建，并提示用户"首次构建预计 1–3 分钟"。
+     - 若存在：跳过构建。
+  4. **进入容器 Shell**：`docker run --rm -it ... bash`，直接阻塞式进入交互环境。
+
+- [ ] **2.2 极致加载优化（热启动链路）**
+  优化目标：从命令触发到 Shell 交互 ≤ 5s。
+  - **镜像分层**：Dockerfile 采用多阶段构建或固化 `mise install` 结果，减少日常重建。
+  - **Entrypoint 快速路径**：`docker/entrypoint.sh` 中若检测到用户/组已存在，跳过 `useradd/groupadd`。
+  - **Compose 预热**：基础设施服务在后台保持运行，避免每次 `up` 重复初始化。
+
+- [ ] **2.3 动态环境注入**
+  - 启动时自动加载 `.env`，并根据显式白名单（而非 `env | grep`）透传关键 API Key 至容器。
+  - 白名单覆盖：`OPENAI_*`, `ANTHROPIC_*`, `GOOGLE_*`, `LANGCHAIN_*`, `AZURE_*`, `MISTRAL_*`, `GROQ_*`, `COHERE_*`, `HF_*`, `*_API_KEY`。
+  - 同时透传基础设施变量：`REDIS_URL`, `QDRANT_HOST`, `QDRANT_PORT`。
+
+- [ ] **2.4 性能指标边界定义与验收口径**
+  - 明确区分**冷启动**（镜像缺失，允许 1–3 分钟）与**热启动**（镜像已存在，≤ 5 秒）。
+  - 在 `mise run harness-up` 输出中增加阶段计时日志（可选开关），便于后续调试。
+
+---
+
+## 🚀 阶段三：运维与资源回收 (`mise run harness-logs/harness-down`)
+
+*目标：提供清晰的观测手段，并保证系统清洁、数据安全。*
+
+- [ ] **3.1 日志可观测性**
+  - `mise run harness-logs` 默认聚合显示 `docker compose logs -f`（Redis、Qdrant）。
+  - 增加 Agent 日志读取路径：`/workspace/logs/agent.log`（容器内写入，宿主机通过挂载卷直接查看）。
+  - 可选：增加 `mise run agent-logs` 独立命令，仅 tail Agent 日志。
+
+- [ ] **3.2 分级清理策略**
+  解决「彻底清理」与「数据持久化」之间的冲突：
+  - **`mise run harness-down`**（标准清理）：
+    - 停止并移除 Redis、Qdrant 容器。
+    - 停止并移除 toolchain 容器。
+    - **保留** `agent-network` 与 `qdrant_data` 卷（避免数据误删）。
+  - **`mise run harness-clean`**（深度清理任务）：
+    - 执行 `docker compose down --volumes`（删除 Qdrant 数据卷，**有数据丢失风险**）。
+    - 移除 `agent-network`（若已无容器连接）。
+    - 删除本地 `ai-dev:latest` 镜像。
+    - 验证 `docker ps -a` 为空、`docker network ls` 无残留。
+
+- [ ] **3.3 存储持久化策略验证**
+  - 确认 `docker-compose.yml` 中 `qdrant_data` 命名卷正确挂载到 `/qdrant/storage`。
+  - 执行 `up → down → up` 循环，验证 Qdrant 集合数据未丢失。
+
+---
+
+## 🚀 阶段四：工具链深度集成 (Toolchain Parity)
+
+*目标：确保容器内工具链达到生产级可用，解决身份认证与缓存复用。*
+
+- [ ] **4.1 核心工具版本对齐**
+  - 验证 `gh`, `git`, `pnpm`, `uv`, `python`, `node` 在容器内的版本与 `docker/mise-global.toml` 声明一致。
+
+- [ ] **4.2 身份认证透传**（新增关键任务）
+  容器内必须具备与宿主机同等的代码推送/包发布能力：
+  - **Git 配置**：挂载 `~/.gitconfig` 到容器内对应用户 home。
+  - **GitHub CLI**：挂载 `~/.config/gh` 或透传 `GH_TOKEN`。
+  - **SSH 代理**：透传 `SSH_AUTH_SOCK` 环境变量并挂载对应 socket 路径，支持 `git clone` 私有仓库。
+  - **GPG（可选）**：若用户有 signed commit 需求，挂载 `~/.gnupg`。
+
+- [ ] **4.3 缓存挂载优化**
+  将宿主机的工具缓存目录挂载至容器，确保依赖安装极致速度：
+  - `pnpm`：`~/.local/share/pnpm` → 容器内用户 home 对应路径。
+  - `uv`：`~/.cache/uv` → 容器内用户 home 对应路径。
+  - 注意：需与 `entrypoint.sh` 中的 UID/GID 映射保持一致，避免权限冲突。
+
+---
+
+## 🚀 阶段五：目标达成评估 (Validation)
+
+*目标：建立自动化验收机制，防止回归。*
+
+- [ ] **5.1 冒烟测试脚本 (`smoke_test.py`)**
+  扩充现有 `smoke_test.py`，覆盖以下断言：
+  - [ ] 容器内各工具版本与 `docker/mise-global.toml` 一致。
+  - [ ] 宿主机目录正确挂载到 `/workspace`（创建文件双向可见）。
+  - [ ] `mise run harness-up` → `mise run harness-down` 后，`docker ps -a` 无残留容器。
+  - [ ] `docker network ls` 中无孤立的 `agent-network`（深度清理后）。
+  - [ ] Qdrant 数据卷在标准 `down` 后仍然保留。
+
+- [ ] **5.2 启动计时验收**
+  - [ ] 热启动测试：镜像已构建、基础设施已运行，执行 `mise run harness-up` 10 次，取平均值与中位数，确保 ≤ 5 秒。
+  - [ ] 输出测试报告：记录每次耗时、宿主机型号、Docker 版本。
+
+- [ ] **5.3 残留物压力测试**
+  - [ ] 反复执行 `up → down → up` 循环 20 次，每次检查 `docker ps -a` 与 `docker network ls`。
+  - [ ] 验证无容器泄漏、无网络泄漏、无僵尸 volume。
+
+---
+
+## 📎 附录：关键设计决策记录 (ADR)
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 5 秒指标适用范围 | **仅热启动** | 冷启动涉及镜像构建，耗时不可控，需避免给用户错误预期 |
+| `up` 任务语义 | **阻塞式进入 Shell** | 符合用户故事"自动进入容器环境"的描述；非阻塞式（后台运行）无法提供交互体验 |
+| 清理分级 | **down 保留数据 / clean 深度清理** | 防止用户误操作导致 Qdrant 向量索引丢失 |
+| 实时测速 | **P2 优先级，可延后** | 属于体验优化，非阻塞核心交付；且不同网络环境行为差异大，需充分测试 |
+| 认证透传 | **必须项 (P0)** | 无 SSH/GH 认证，容器内无法推送代码，沦为只读环境，生产力为零 |
+
+---
+
+*Generated by Kimi Code CLI - Revised based on architecture review.*

@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Start AI-Agent Harness: check host, start infra, build image if needed, and enter container shell.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+
+# Detect whether we are invoked from the global Harness installation.
+# Global mode uses the shared infrastructure compose project; local mode uses
+# the compose file in the current directory.
+GLOBAL_MODE=0
+# Detect global invocation by comparing the script path (without resolving
+# symlinks) to AI_HARNESS_HOME. This handles the case where AI_HARNESS_HOME is
+# a symlink to the project directory.
+if [[ -n "${AI_HARNESS_HOME:-}" ]]; then
+  if [[ "${SCRIPT_DIR}" == "${AI_HARNESS_HOME}/scripts" ]]; then
+    GLOBAL_MODE=1
+  fi
+fi
+
+COMPOSE_ARGS=()
+if [[ "${GLOBAL_MODE}" -eq 1 ]]; then
+  COMPOSE_ARGS+=("--harness-global")
+fi
+
+start_time=$(date +%s)
+
+echo "[harness-up] === Phase 1/4: Pre-flight checks ==="
+"${SCRIPT_DIR}/check-host" || { echo "[harness-up] ❌ Host checks failed"; exit 1; }
+
+echo "[harness-up] === Phase 2/4: Starting infrastructure services ==="
+if [[ "${#COMPOSE_ARGS[@]}" -gt 0 ]]; then
+  "${SCRIPT_DIR}/compose" "${COMPOSE_ARGS[@]}" up -d
+else
+  "${SCRIPT_DIR}/compose" up -d
+fi
+
+echo "[harness-up] === Phase 3/4: Image validation ==="
+if ! docker image inspect "${TOOLCHAIN_IMAGE}" >/dev/null 2>&1; then
+  echo "[harness-up] ⚠️  Image not found. Triggering build..."
+  build_args=()
+  if [[ -f "${HOST_PROFILE:-}" ]]; then
+    use_china_mirror=$(read_toml_kv "recommendations.use_china_mirror" "false")
+    apt_mirror_name=$(read_toml_kv "recommendations.apt_mirror_name" "aliyun")
+    npm_registry=$(read_toml_kv "recommendations.npm_registry" "https://registry.npmmirror.com")
+    build_args+=("--build-arg" "USE_CHINA_MIRROR=${use_china_mirror}")
+    build_args+=("--build-arg" "APT_MIRROR_NAME=${apt_mirror_name}")
+    build_args+=("--build-arg" "NPM_REGISTRY=${npm_registry}")
+  fi
+  docker build "${build_args[@]}" -t "${TOOLCHAIN_IMAGE}" -f "${SCRIPT_DIR}/../docker/Dockerfile" "${SCRIPT_DIR}/.."
+else
+  echo "[harness-up] ✅ Image found. Skipping build."
+fi
+
+end_time=$(date +%s)
+elapsed=$((end_time - start_time))
+echo "[harness-up] === Phase 4/4: Entering toolchain container ==="
+echo "[harness-up] ⏱️  Total time to shell: ${elapsed}s"
+"${SCRIPT_DIR}/toolchain" shell
