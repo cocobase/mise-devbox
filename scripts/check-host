@@ -44,18 +44,11 @@ print_homebrew_install() {
   cat <<'EOF'
 
 Homebrew is required but was not found.
-Homebrew is the baseline package manager for this toolchain. It must be installed first to keep the host setup flow working reliably.
+Homebrew is the baseline package manager for this toolchain. Install it first to keep the host setup flow working reliably.
 
-Install Homebrew with the Tsinghua mirror:
+Run this command from the project root:
 
-  export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
-  export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
-  export HOMEBREW_INSTALL_FROM_API=1
-  export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
-  export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
-  git clone --depth=1 https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install.git brew-install
-  /bin/bash brew-install/install.sh
-  rm -rf brew-install
+  scripts/install-brew
 EOF
 }
 

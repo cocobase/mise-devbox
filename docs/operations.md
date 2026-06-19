@@ -46,17 +46,10 @@ mise run harness-check
 
 宿主机画像结果与最优镜像推荐会持久化在 `~/.config/ai-harness/host-profile.toml`，供后续构建自动消费。
 
-Homebrew 是本工具链最基础的包管理工具，缺失时 `check-host` 会提示安装并阻断后续流程。可使用清华源安装：
+Homebrew 是本工具链最基础的包管理工具，缺失时 `check-host` 会提示安装并阻断后续流程。可使用脚本通过清华源安装：
 
 ```bash
-export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
-export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
-export HOMEBREW_INSTALL_FROM_API=1
-export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
-export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
-git clone --depth=1 https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install.git brew-install
-/bin/bash brew-install/install.sh
-rm -rf brew-install
+scripts/install-brew
 ```
 
 `check-host` 使用 Bash/awk 读写宿主机画像 TOML，不依赖 Python 3.11+ 或 `tomli`。`python3` 仅作为后续扩展的可选工具存在，缺失时不会阻塞宿主机画像生成。
