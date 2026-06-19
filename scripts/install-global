@@ -22,6 +22,14 @@ set -euo pipefail
 HARNESS_HOME="${AI_HARNESS_HOME:-${HOME}/.ai-harness}"
 MISE_CONFIG="${HOME}/.config/mise/config.toml"
 
+# Source common utilities to get TOOLCHAIN_IMAGE and other constants
+if [[ -f "${HARNESS_HOME}/scripts/lib/common.sh" ]]; then
+  # shellcheck source=scripts/lib/common.sh
+  source "${HARNESS_HOME}/scripts/lib/common.sh"
+else
+  TOOLCHAIN_IMAGE="ai-dev:latest"
+fi
+
 # ---------------------------------------------------------------------------
 # Pre-flight checks
 # ---------------------------------------------------------------------------
@@ -100,7 +108,7 @@ cat >> "${MISE_CONFIG}" <<EOF
 
 [env]
 AI_HARNESS_HOME = "${HARNESS_HOME}"
-TOOLCHAIN_IMAGE = "ai-dev-toolchain:refactored"
+TOOLCHAIN_IMAGE = "${TOOLCHAIN_IMAGE}"
 REDIS_URL = "redis://agent-redis:6379/0"
 QDRANT_HOST = "agent-qdrant"
 QDRANT_PORT = "6333"

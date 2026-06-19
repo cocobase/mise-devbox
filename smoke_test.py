@@ -3,7 +3,7 @@
 AI-Agent Harness Smoke Test
 ============================
 验证 plan.md 中定义的核心达成指标：
-1. 环境就绪：容器内 python, node, uv, pnpm 版本与 .mise.toml 一致
+1. 环境就绪：容器内 python, node, uv, pnpm 版本与 docker/mise-global.toml 一致
 2. 挂载验证：宿主机目录 ↔ /workspace 双向同步
 3. 启动/清理：up → down 后无残留容器
 4. 数据持久化：标准 down 后 Qdrant 数据卷保留
@@ -22,8 +22,8 @@ from pathlib import Path
 # Configuration
 # -----------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).parent.resolve()
-MISE_PATH = PROJECT_ROOT / ".mise.toml"
-IMAGE_NAME = "ai-dev-toolchain:refactored"
+MISE_PATH = PROJECT_ROOT / "docker" / "mise-global.toml"
+IMAGE_NAME = "ai-dev:latest"
 NETWORK_NAME = "agent-network"
 VOLUME_NAME = "qdrant_data"
 MARKER_FILE = PROJECT_ROOT / ".smoke_test_marker"
@@ -60,7 +60,7 @@ def run(cmd, check=True, capture_output=True, text=True, timeout=60):
 
 
 def load_mise_versions():
-    """Parse .mise.toml to get expected tool versions."""
+    """Parse docker/mise-global.toml to get expected tool versions."""
     with open(MISE_PATH, "rb") as f:
         data = tomllib.load(f)
     return data.get("tools", {})
@@ -80,11 +80,11 @@ def cleanup_marker():
 # Tests
 # -----------------------------------------------------------------------------
 def test_01_container_tool_versions():
-    """容器内各工具版本与 .mise.toml 一致。"""
+    """容器内各工具版本与 docker/mise-global.toml 一致。"""
     print("\n[TEST 01] Container tool versions alignment")
     expected = load_mise_versions()
     if not expected:
-        print("  ⚠️  No tools found in .mise.toml")
+        print("  ⚠️  No tools found in docker/mise-global.toml")
         return False
 
     result = run("scripts/toolchain versions .", check=False)
@@ -146,7 +146,7 @@ def test_02_mount_bidirectional_sync():
 
 
 def test_03_down_removes_containers():
-    """mise run up → mise run down 后，无业务容器残留。"""
+    """scripts/task-harness-up → scripts/task-harness-down 后，无业务容器残留。"""
     print("\n[TEST 03] Standard down removes harness containers")
 
     # Prune any leftover stopped containers (e.g., Docker build intermediates)
@@ -154,7 +154,7 @@ def test_03_down_removes_containers():
     run("docker container prune -f", check=False, capture_output=True)
 
     ensure_infra_running()
-    run("mise run down", check=False)
+    run("scripts/task-harness-down", check=False)
 
     result = run("docker ps -aq", check=False)
     containers = result.stdout.strip()
@@ -171,7 +171,7 @@ def test_04_down_preserves_volume():
     """Qdrant 数据卷在标准 down 后仍然保留。"""
     print("\n[TEST 04] Standard down preserves qdrant_data volume")
     ensure_infra_running()
-    run("mise run down", check=False)
+    run("scripts/task-harness-down", check=False)
 
     result = run("docker volume ls -q -f name=qdrant_data", check=False)
     volumes = result.stdout.strip()
@@ -187,7 +187,7 @@ def test_05_clean_removes_network_and_image():
     """docker network ls 中无孤立的 agent-network（深度清理后）。"""
     print("\n[TEST 05] Deep clean removes network and image")
     ensure_infra_running()
-    run("mise run clean", check=False)
+    run("scripts/task-harness-clean", check=False)
 
     # Check network
     result = run("docker network ls --format '{{.Name}}'", check=False)
@@ -208,12 +208,12 @@ def test_05_clean_removes_network_and_image():
 
 
 def test_06_hot_start_timing():
-    """热启动测试：镜像已构建、基础设施已运行，执行 mise run up 应该 ≤ 15s。"""
+    """热启动测试：镜像已构建、基础设施已运行，执行本地脚本链路应该 ≤ 15s。"""
     print("\n[TEST 06] Hot-start timing (target: ≤ 15s)")
 
     result = run(f"docker image inspect {IMAGE_NAME}", check=False)
     if result.returncode != 0:
-        print(f"  ⏭️  Skipping: {IMAGE_NAME} not built yet. Run 'mise run build' first.")
+        print(f"  ⏭️  Skipping: {IMAGE_NAME} not built yet. Run 'docker build -t {IMAGE_NAME} -f docker/Dockerfile .' first.")
         return None
 
     ensure_infra_running()
@@ -239,6 +239,39 @@ def test_06_hot_start_timing():
     return False
 
 
+def test_07_host_profile_generation():
+    """验证 check-host 能正确生成宿主机画像 TOML 文件。"""
+    print("\n[TEST 07] Host profile generation")
+
+    # Run check-host to generate/refresh profile
+    result = run("scripts/check-host --yes --refresh", check=False)
+    if result.returncode != 0:
+        print("  ❌ scripts/check-host failed to execute")
+        print(result.stderr)
+        return False
+
+    profile_path = Path.home() / ".config" / "ai-harness" / "host-profile.toml"
+    if not profile_path.exists():
+        print(f"  ❌ Profile not found at {profile_path}")
+        return False
+
+    try:
+        with open(profile_path, "rb") as f:
+            profile = tomllib.load(f)
+
+        required_sections = ["meta", "host", "network", "mirrors", "recommendations"]
+        for section in required_sections:
+            if section not in profile:
+                print(f"  ❌ Missing section '{section}' in host profile")
+                return False
+
+        print(f"  ✅ Host profile valid. Location detected: {profile['network'].get('location')}")
+        return True
+    except Exception as e:
+        print(f"  ❌ Failed to parse host profile: {e}")
+        return False
+
+
 # -----------------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------------
@@ -252,6 +285,7 @@ def main():
     skipped = []
 
     tests = [
+        test_07_host_profile_generation,
         test_01_container_tool_versions,
         test_02_mount_bidirectional_sync,
         test_03_down_removes_containers,

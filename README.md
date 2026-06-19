@@ -45,7 +45,7 @@ cd ~/.ai-harness
 ### 3. 检查环境
 
 ```bash
-mise run check
+./scripts/check-host
 ```
 
 如果缺少组件，命令会提示安装方法。
@@ -60,7 +60,13 @@ mise run check
 
 ### 5. 构建开发环境
 
-第一次使用前，先构建环境：
+第一次使用前，建议先运行环境检查与测速：
+
+```bash
+mise run harness-check
+```
+
+该命令会对你的宿主机进行画像并自动为国内用户配置镜像源加速。接着构建环境：
 
 ```bash
 mise run harness-build
@@ -213,12 +219,12 @@ mise run harness-clean
 如果你是在维护这个 Harness 项目本身，而不是在普通业务项目里使用它，可以在本仓库目录运行：
 
 ```bash
-mise run check
-mise run build
-mise run up
+./scripts/check-host
+docker build -t ai-dev:latest -f docker/Dockerfile .
+./scripts/task-harness-up
 ```
 
-这里的 `mise run up` 是本仓库的本地开发入口。普通使用者更推荐使用全局命令：
+这些脚本是本仓库的本地开发入口。普通使用者更推荐先运行 `./scripts/install-global`，再使用全局命令：
 
 ```bash
 mise run harness-up

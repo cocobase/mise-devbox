@@ -164,7 +164,18 @@ ensure_image() {
     dockerfile="${SCRIPT_DIR}/../docker/Dockerfile"
   fi
 
-  docker build -t "${IMAGE}" -f "${dockerfile}" "${build_context}"
+  local build_args=()
+  if [[ -f "${HOST_PROFILE:-}" ]]; then
+    local use_china_mirror apt_mirror_name npm_registry
+    use_china_mirror=$(read_toml_kv "recommendations.use_china_mirror" "false")
+    apt_mirror_name=$(read_toml_kv "recommendations.apt_mirror_name" "aliyun")
+    npm_registry=$(read_toml_kv "recommendations.npm_registry" "https://registry.npmmirror.com")
+    build_args+=("--build-arg" "USE_CHINA_MIRROR=${use_china_mirror}")
+    build_args+=("--build-arg" "APT_MIRROR_NAME=${apt_mirror_name}")
+    build_args+=("--build-arg" "NPM_REGISTRY=${npm_registry}")
+  fi
+
+  docker build "${build_args[@]}" -t "${IMAGE}" -f "${dockerfile}" "${build_context}"
 }
 
 # -----------------------------------------------------------------------------

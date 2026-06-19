@@ -15,9 +15,9 @@ mise run harness-logs
 如果你是在本仓库里开发这个工具本身，可以使用本地任务：
 
 ```bash
-mise run check
-mise run versions
-mise run logs
+./scripts/check-host
+./scripts/toolchain versions .
+./scripts/compose logs -f
 ```
 
 ## 环境检查
@@ -31,7 +31,7 @@ mise run harness-check
 本仓库开发：
 
 ```bash
-mise run check
+./scripts/check-host
 ```
 
 检查内容包括：
@@ -41,6 +41,10 @@ mise run check
 - Docker daemon 是否正在运行
 - Docker Compose 是否可用
 - Homebrew 是否存在
+- 宿主机硬件资源画像（CPU、内存、架构）
+- 网络环境归属检测（国内/海外）与下载源延迟排名测速
+
+宿主机画像结果与最优镜像推荐会持久化在 `~/.config/ai-harness/host-profile.toml`，供后续构建自动消费。
 
 Homebrew 检查是提示性的，不是硬性阻塞项。
 
@@ -53,13 +57,16 @@ export OPENAI_API_KEY="你的 Key"
 mise run harness-up
 ```
 
-如果你是在本仓库目录使用本地任务，本仓库 `.mise.toml` 会读取 `.env`：
+如果你是在本仓库目录调试，可以复制 `.env.example`，再在当前 shell 中加载需要的变量：
 
 ```bash
 cp .env.example .env
+set -a
+source .env
+set +a
 ```
 
-然后在 `.env` 中填写需要的 Key。
+然后运行本地脚本或全局 `harness-*` 命令。
 
 ## 构建环境
 
@@ -72,13 +79,13 @@ mise run harness-build
 本仓库开发时使用：
 
 ```bash
-mise run build
+docker build -t ai-dev:latest -f docker/Dockerfile .
 ```
 
 默认镜像名称是：
 
 ```text
-ai-dev-toolchain:refactored
+ai-dev:latest
 ```
 
 ## 启动、进入、退出
@@ -258,7 +265,7 @@ mise run harness-build
 如果使用本仓库本地任务：
 
 ```bash
-mise run build
+docker build -t ai-dev:latest -f docker/Dockerfile .
 ```
 
 ### Colima 下项目目录为空
@@ -290,11 +297,11 @@ mise run harness-up
 mise run harness-down
 ```
 
-本地任务用于维护这个仓库：
+本地脚本用于维护这个仓库：
 
 ```bash
-mise run up
-mise run down
+./scripts/task-harness-up
+./scripts/task-harness-down
 ```
 
 如果你只是使用这个工具开发自己的 AI 项目，优先使用 `harness-*` 命令。

@@ -39,7 +39,16 @@ fi
 echo "[harness-up] === Phase 3/4: Image validation ==="
 if ! docker image inspect "${TOOLCHAIN_IMAGE}" >/dev/null 2>&1; then
   echo "[harness-up] ⚠️  Image not found. Triggering build..."
-  docker build -t "${TOOLCHAIN_IMAGE}" -f "${SCRIPT_DIR}/../docker/Dockerfile" "${SCRIPT_DIR}/.."
+  build_args=()
+  if [[ -f "${HOST_PROFILE:-}" ]]; then
+    use_china_mirror=$(read_toml_kv "recommendations.use_china_mirror" "false")
+    apt_mirror_name=$(read_toml_kv "recommendations.apt_mirror_name" "aliyun")
+    npm_registry=$(read_toml_kv "recommendations.npm_registry" "https://registry.npmmirror.com")
+    build_args+=("--build-arg" "USE_CHINA_MIRROR=${use_china_mirror}")
+    build_args+=("--build-arg" "APT_MIRROR_NAME=${apt_mirror_name}")
+    build_args+=("--build-arg" "NPM_REGISTRY=${npm_registry}")
+  fi
+  docker build "${build_args[@]}" -t "${TOOLCHAIN_IMAGE}" -f "${SCRIPT_DIR}/../docker/Dockerfile" "${SCRIPT_DIR}/.."
 else
   echo "[harness-up] ✅ Image found. Skipping build."
 fi

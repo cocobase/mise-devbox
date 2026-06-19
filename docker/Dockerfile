@@ -2,7 +2,7 @@
 ARG USE_CHINA_MIRROR=false
 ARG APT_MIRROR_NAME=aliyun
 ARG NPM_REGISTRY=https://registry.npmmirror.com/
-ARG MISE_VERSION=2025.2.1
+ARG MISE_VERSION=2026.6.11
 ARG GH_VERSION=2.93.0
 
 # ==========================================
@@ -92,8 +92,8 @@ RUN ARCH=$(dpkg --print-architecture) \
 # Reliable Mise Installation
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in \
-         amd64) MISE_ARCH="linux-x64"; MISE_CHECKSUM="dfdfc43ddd109ec51c32bcd4539e21c60c72c316e784881077557b65f2b87bae" ;; \
-         arm64) MISE_ARCH="linux-arm64"; MISE_CHECKSUM="b1627fa6cca12d0c35c9c5c5b17c4900277d855587b812f85e6dcc0851c88940" ;; \
+         amd64) MISE_ARCH="linux-x64"; MISE_CHECKSUM="4c1036af15efea3a4d83f13481132ec7d7dda15e7ec5869dd70a64072bf1a6c9" ;; \
+         arm64) MISE_ARCH="linux-arm64"; MISE_CHECKSUM="1ec30df460b483c80f490195385cbcef65bad6a1ee5e6c50b97ba684b195ee32" ;; \
          *)     echo "Unsupported architecture: $ARCH"; exit 1 ;; \
        esac \
     && curl -fsSL "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-${MISE_ARCH}" -o /usr/local/bin/mise \
@@ -102,7 +102,7 @@ RUN ARCH=$(dpkg --print-architecture) \
 
 # Toolchain Preparation
 WORKDIR /opt/toolchain
-COPY .mise.toml /opt/toolchain/.mise.toml
+COPY docker/mise-global.toml /opt/toolchain/.mise.toml
 COPY docker/mise-global.toml /opt/mise-config/config.toml
 COPY docker/mise-china.toml /opt/mise-config/config-china.toml
 
@@ -113,15 +113,16 @@ ARG NPM_REGISTRY
 
 RUN if [ "$USE_CHINA_MIRROR" = "true" ]; then \
       cp /opt/mise-config/config-china.toml /opt/mise-config/config.toml; \
-      find /opt/toolchain /opt/mise-config -name "*.toml" -exec sed -i 's/pnpm = "11.2.2"/"npm:pnpm" = "11.2.2"/' {} +; \
       echo "registry=$NPM_REGISTRY" > ~/.npmrc; \
     fi
 
-# Use cache mount for mise downloads to speed up subsequent builds
+# Use cache mount for mise downloads to speed up subsequent builds.
+# mise v2026.6.11 includes aqua format_overrides support, so pnpm can use the
+# normal mise backend instead of the npm workaround needed for v2025.2.1.
 RUN --mount=type=cache,target=/opt/mise-cache,uid=1000,gid=1000,mode=0777 \
     mise trust /opt/toolchain/.mise.toml \
     && mise trust /opt/mise-config/config.toml \
-    && mise install \
+    && MISE_VERBOSE=1 mise install python node pnpm uv \
     && mise reshim
 
 # ==========================================

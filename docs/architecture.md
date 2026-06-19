@@ -8,14 +8,14 @@
 
 | 层级 | 作用 |
 |---|---|
-| mise 任务 | 给用户提供统一命令入口 |
+| mise 全局任务 | 给用户提供统一命令入口 |
 | Docker 工具链镜像 | 封装 Python、Node.js、pnpm、uv、git、gh 和 mise |
 | Docker Compose 基础设施 | 启动 Redis 和 Qdrant |
 
 默认工具链镜像名称：
 
 ```text
-ai-dev-toolchain:refactored
+ai-dev:latest
 ```
 
 默认基础设施服务：
@@ -27,11 +27,11 @@ ai-dev-toolchain:refactored
 
 ```text
 .
-├── .mise.toml
 ├── docker-compose.yml
 ├── docker
 │   ├── Dockerfile
 │   ├── entrypoint.sh
+│   ├── mise-china.toml
 │   └── mise-global.toml
 ├── scripts
 │   ├── check-host
@@ -48,25 +48,21 @@ ai-dev-toolchain:refactored
 └── package.json
 ```
 
-## 本地任务
+## 本地脚本
 
-本仓库的 `.mise.toml` 定义了本地开发任务：
+仓库根目录不再保存本地 `.mise.toml`。维护 Harness 项目本身时，直接使用脚本入口：
 
 ```bash
-mise run check
-mise run build
-mise run versions
-mise run shell
-mise run run
-mise run setup
-mise run up
-mise run down
-mise run logs
-mise run agent-logs
-mise run clean
+./scripts/check-host
+docker build -t ai-dev:latest -f docker/Dockerfile .
+./scripts/task-harness-up
+./scripts/task-harness-down
+./scripts/task-harness-clean
+./scripts/compose logs -f
+./scripts/toolchain versions .
 ```
 
-这些任务适合维护 Harness 项目本身。
+工具版本的仓库内真源是 `docker/mise-global.toml`。
 
 ## 全局任务
 
@@ -171,14 +167,7 @@ HOST_USER="$(id -un)"
 
 ## 环境变量透传
 
-本仓库本地任务会通过 `.mise.toml` 加载本仓库的 `.env`：
-
-```toml
-[env]
-_.file = ".env"
-```
-
-全局 `harness-*` 任务不会自动读取 `~/.ai-harness/.env`。它们依赖当前 shell 或调用环境里已经存在的环境变量。
+全局 `harness-*` 任务和本地脚本都不会自动读取 `~/.ai-harness/.env`。它们依赖当前 shell 或调用环境里已经存在的环境变量。
 
 `scripts/toolchain` 会把常见 AI 服务相关环境变量传入容器，例如：
 
@@ -224,12 +213,13 @@ QDRANT_PORT
 - 安装 git、curl、build tools 等工具
 - 从 GitHub Release 安装 `gh`
 - 安装 mise
-- 复制 `.mise.toml` 和 `docker/mise-global.toml`
+- 复制 `docker/mise-global.toml` 到镜像内工具链配置位置
+- 复制 `docker/mise-china.toml` 作为国内网络模式下的 mise 下载源配置
 - 执行 `mise install`
 - 设置 `/workspace` 为工作目录
 - 使用 `docker/entrypoint.sh` 作为入口
 
-镜像内置 `/opt/mise-config/config.toml` 作为全局工具版本配置。这样即使挂载的业务项目没有自己的 `.mise.toml`，也可以直接使用 Python、Node.js、pnpm 和 uv。
+镜像内置 `/opt/mise-config/config.toml` 作为全局工具版本配置，内容来自 `docker/mise-global.toml`。这样即使挂载的业务项目没有自己的 `.mise.toml`，也可以直接使用 Python、Node.js、pnpm 和 uv。
 
 ## Docker Compose 基础设施
 
@@ -329,7 +319,7 @@ docker run --rm -it \
   -e HOST_USER="$(id -un)" \
   -v "$PWD:/workspace" \
   -w /workspace \
-  ai-dev-toolchain:refactored \
+  ai-dev:latest \
   bash
 ```
 
@@ -342,7 +332,7 @@ docker run --rm \
   -e HOST_USER="$(id -un)" \
   -v "$PWD:/workspace" \
   -w /workspace \
-  ai-dev-toolchain:refactored \
+  ai-dev:latest \
   python --version
 ```
 
