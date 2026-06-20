@@ -168,9 +168,15 @@ HOST_USER="$(id -un)"
 
 ## 环境变量透传
 
-全局 `harness-*` 任务和本地脚本都不会自动读取 `~/.ai-harness/.env`。它们依赖当前 shell 或调用环境里已经存在的环境变量。
+环境变量从宿主机到容器内用户进程需要经过完整链路。以 `DEEPSEEK_API_KEY` 为例：
 
-`scripts/toolchain` 会把常见 AI 服务相关环境变量传入容器，例如：
+### 1. 项目 `.env` 自动加载（`scripts/toolchain`）
+
+在 `shell`/`run`/`versions` 三个派发分支中，解析完 `project_dir` 后即调用 `load_project_env()`。该函数检测 `<project_dir>/.env` 文件是否存在，存在则通过 `set -a; source; set +a` 将文件中的 `KEY=VALUE` 行导出为当前 shell 的环境变量。
+
+### 2. 白名单过滤（`add_env_args()`）
+
+`add_env_args()` 遍历当前 shell 的所有环境变量，按白名单模式过滤：
 
 ```text
 OPENAI_*
@@ -185,12 +191,42 @@ HF_*
 *_API_KEY
 ```
 
-同时会传入基础设施变量：
+匹配到的键通过 `docker run -e KEY` 传入容器（取值从宿主机 shell 环境继承）。
+
+同时传入基础设施变量：
 
 ```text
 REDIS_URL
 QDRANT_HOST
 QDRANT_PORT
+```
+
+### 3. sudo 屏障穿越（`docker/entrypoint.sh`）
+
+容器内入口点以 root 启动。此时 docker 传入的环境变量对 root 可见，但之后 `exec sudo --user #UID` 会重置环境。入口点在 sudo 前收集所有匹配白名单的 API key 并显式追加到 `env` 变量列表中：
+
+```
+_api_env+=("KEY=VALUE")
+```
+
+再通过 `env ... "${_api_env[@]}" ... cmd` 将这些变量注入到最终用户进程的环境中。
+
+### 完整链路
+
+```
+项目 .env 文件
+  │  set -a; source (load_project_env)
+  ▼
+toolchain shell 环境变量
+  │  compgen -v → 白名单匹配 (add_env_args)
+  ▼
+docker run -e DEEPSEEK_API_KEY
+  │  Docker 注入到容器 root 环境
+  ▼
+entrypoint.sh (root) 收集 *_API_KEY
+  │  _api_env 数组 → env VAR=VAL (sudo 屏障)
+  ▼
+容器用户进程（opencode / python / node）
 ```
 
 ## 认证和缓存挂载

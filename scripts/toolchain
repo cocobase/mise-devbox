@@ -43,6 +43,15 @@ abs_path() {
   pwd -P
 }
 
+load_project_env() {
+  local env_file="$1/.env"
+  [[ -f "${env_file}" ]] || return 0
+  set -a
+  # shellcheck source=/dev/null
+  source "${env_file}"
+  set +a
+}
+
 # Add core docker run arguments (user, workspace mount, etc.)
 add_core_args() {
   local project_dir="$1"
@@ -235,6 +244,7 @@ case "${command}" in
       shift
     fi
     project_dir="$(abs_path "${dir}")"
+    load_project_env "${project_dir}"
     t0=$(_ts_ms)
     build_docker_args "${project_dir}"
     _step "$(( $(_ts_ms) - t0 ))" "build_docker_args (total)"
@@ -257,6 +267,7 @@ case "${command}" in
     fi
     project_dir="$(abs_path "$1")"
     shift
+    load_project_env "${project_dir}"
     t0=$(_ts_ms)
     build_docker_args "${project_dir}"
     _step "$(( $(_ts_ms) - t0 ))" "build_docker_args (total)"
@@ -271,6 +282,7 @@ case "${command}" in
       shift
     fi
     project_dir="$(abs_path "${dir}")"
+    load_project_env "${project_dir}"
     build_docker_args "${project_dir}"
     exec docker run "${DOCKER_ARGS[@]}" bash -lc \
       'printf "mise: "; mise --version; printf "python: "; python --version; printf "node: "; node --version; printf "pnpm: "; pnpm --version; printf "uv: "; uv --version; printf "git: "; git --version; printf "gh: "; gh --version | head -n 1; printf "opencode: "; opencode --version; printf "vim: "; vim --version | head -n 1'

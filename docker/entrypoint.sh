@@ -71,6 +71,16 @@ export XDG_CACHE_HOME="${MISE_CACHE_DIR}"
 export XDG_STATE_HOME="/opt/mise-cache/state"
 export PATH="/opt/mise/shims:/usr/local/bin:${PATH}"
 
+# Collect API key env vars so they survive the sudo barrier below
+_api_env=()
+for _v in $(compgen -v); do
+  case "${_v}" in
+    *_API_KEY|OPENAI_*|ANTHROPIC_*|GOOGLE_*|LANGCHAIN_*|AZURE_*|MISTRAL_*|GROQ_*|COHERE_*|HF_*)
+      [[ -n "${!_v:-}" ]] && _api_env+=("${_v}=${!_v}")
+      ;;
+  esac
+done
+
 for config_file in /workspace/.mise.toml /workspace/mise.toml; do
   if [[ -f "${config_file}" ]]; then
     sudo \
@@ -85,6 +95,7 @@ for config_file in /workspace/.mise.toml /workspace/mise.toml; do
       "XDG_DATA_HOME=${XDG_DATA_HOME}" \
       "XDG_CACHE_HOME=${XDG_CACHE_HOME}" \
       "XDG_STATE_HOME=${XDG_STATE_HOME}" \
+      "${_api_env[@]}" \
       "PATH=${PATH}" \
       mise trust "${config_file}" >/dev/null 2>&1 || true
   fi
@@ -103,5 +114,6 @@ exec sudo \
   "XDG_DATA_HOME=${XDG_DATA_HOME}" \
   "XDG_CACHE_HOME=${XDG_CACHE_HOME}" \
   "XDG_STATE_HOME=${XDG_STATE_HOME}" \
+  "${_api_env[@]}" \
   "PATH=${PATH}" \
   "$@"
