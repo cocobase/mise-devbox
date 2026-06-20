@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+_ep_ms() { echo $(( $(date +%s%3N) )); }
+T0=$(_ep_ms)
+_ep_step() { printf '[entrypoint-timing] %6dms  %s\n' "$(( $(_ep_ms) - T0 ))" "$1" >&2; }
+
 HOST_UID="${HOST_UID:-1000}"
 HOST_GID="${HOST_GID:-1000}"
 HOST_USER="${HOST_USER:-developer}"
@@ -36,6 +40,7 @@ else
     --shell /bin/bash \
     "${HOST_USER}" >/dev/null 2>&1 || true
 fi
+_ep_step "user-setup"
 
 mkdir -p /workspace
 # Only chown the workspace mount point itself, not the host files inside it.
@@ -44,14 +49,18 @@ mkdir -p /workspace
 if [[ "$(stat -c '%u:%g' /workspace 2>/dev/null || echo '0:0')" != "${HOST_UID}:${HOST_GID}" ]]; then
   chown "${HOST_UID}:${HOST_GID}" /workspace 2>/dev/null || true
 fi
-mkdir -p /opt/mise-config /opt/mise-cache
-chmod -R a+rwX /opt/mise-config /opt/mise-cache 2>/dev/null || true
+_ep_step "workspace"
 
-# Ensure the user home directory is owned by the host user so tools like mise
+mkdir -p /opt/mise-config /opt/mise-cache /opt/mise-cache/state
+chmod -R a+rwX /opt/mise-config /opt/mise-cache 2>/dev/null || true
+_ep_step "permissions"
+
+# Ensure the user home directory exists so tools like mise
 # can write config/cache files under ~/.local.
+# Ownership is already correct from useradd --create-home above.
 user_home="/home/${HOST_USER}"
 mkdir -p "${user_home}"
-chown -R "${HOST_UID}:${HOST_GID}" "${user_home}" 2>/dev/null || true
+_ep_step "home-dir"
 
 export MISE_DATA_DIR=/opt/mise
 export MISE_CONFIG_DIR=/opt/mise-config
@@ -59,6 +68,7 @@ export MISE_CACHE_DIR=/opt/mise-cache
 export XDG_CONFIG_HOME="${MISE_CONFIG_DIR}"
 export XDG_DATA_HOME="${MISE_DATA_DIR}"
 export XDG_CACHE_HOME="${MISE_CACHE_DIR}"
+export XDG_STATE_HOME="/opt/mise-cache/state"
 export PATH="/opt/mise/shims:/usr/local/bin:${PATH}"
 
 for config_file in /workspace/.mise.toml /workspace/mise.toml; do
@@ -67,26 +77,31 @@ for config_file in /workspace/.mise.toml /workspace/mise.toml; do
       --set-home \
       --user "#${HOST_UID}" \
       env \
+      "HOME=${user_home}" \
       "MISE_DATA_DIR=${MISE_DATA_DIR}" \
       "MISE_CONFIG_DIR=${MISE_CONFIG_DIR}" \
       "MISE_CACHE_DIR=${MISE_CACHE_DIR}" \
       "XDG_CONFIG_HOME=${XDG_CONFIG_HOME}" \
       "XDG_DATA_HOME=${XDG_DATA_HOME}" \
       "XDG_CACHE_HOME=${XDG_CACHE_HOME}" \
+      "XDG_STATE_HOME=${XDG_STATE_HOME}" \
       "PATH=${PATH}" \
       mise trust "${config_file}" >/dev/null 2>&1 || true
   fi
 done
+_ep_step "mise-trust"
 
 exec sudo \
   --set-home \
   --user "#${HOST_UID}" \
   env \
+  "HOME=${user_home}" \
   "MISE_DATA_DIR=${MISE_DATA_DIR}" \
   "MISE_CONFIG_DIR=${MISE_CONFIG_DIR}" \
   "MISE_CACHE_DIR=${MISE_CACHE_DIR}" \
   "XDG_CONFIG_HOME=${XDG_CONFIG_HOME}" \
   "XDG_DATA_HOME=${XDG_DATA_HOME}" \
   "XDG_CACHE_HOME=${XDG_CACHE_HOME}" \
+  "XDG_STATE_HOME=${XDG_STATE_HOME}" \
   "PATH=${PATH}" \
   "$@"

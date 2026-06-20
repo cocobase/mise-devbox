@@ -16,6 +16,9 @@ HARNESS_PUBLISH_PORTS="${HARNESS_PUBLISH_PORTS:-1}"
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
+_ts_ms() { perl -MTime::HiRes=time -e 'print int(time * 1000)' 2>/dev/null || echo $(( $(date +%s) * 1000 )); }
+_step() { printf '[toolchain-timing] %6dms  %s\n' "$1" "$2" >&2; }
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -143,14 +146,36 @@ add_tty_args() {
 
 # Build the full docker args array.
 build_docker_args() {
-  local project_dir="$1"
+  local project_dir="$1" t0
+
+  t0=$(_ts_ms)
   add_core_args "${project_dir}"
+  _step "$(( $(_ts_ms) - t0 ))" "add_core_args"
+
+  t0=$(_ts_ms)
   add_env_args
+  _step "$(( $(_ts_ms) - t0 ))" "add_env_args"
+
+  t0=$(_ts_ms)
   add_auth_mounts
+  _step "$(( $(_ts_ms) - t0 ))" "add_auth_mounts"
+
+  t0=$(_ts_ms)
   add_cache_mounts
+  _step "$(( $(_ts_ms) - t0 ))" "add_cache_mounts"
+
+  t0=$(_ts_ms)
   add_network_arg
+  _step "$(( $(_ts_ms) - t0 ))" "add_network_arg"
+
+  t0=$(_ts_ms)
   add_port_args
+  _step "$(( $(_ts_ms) - t0 ))" "add_port_args"
+
+  t0=$(_ts_ms)
   add_tty_args
+  _step "$(( $(_ts_ms) - t0 ))" "add_tty_args"
+
   DOCKER_ARGS+=("${IMAGE}")
 }
 
@@ -200,7 +225,9 @@ shift || true
 
 case "${command}" in
   shell)
+    t0=$(_ts_ms)
     ensure_image
+    _step "$(( $(_ts_ms) - t0 ))" "ensure_image"
     # Handle the case where the next arg might be a flag or empty
     dir="."
     if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
@@ -208,7 +235,10 @@ case "${command}" in
       shift
     fi
     project_dir="$(abs_path "${dir}")"
+    t0=$(_ts_ms)
     build_docker_args "${project_dir}"
+    _step "$(( $(_ts_ms) - t0 ))" "build_docker_args (total)"
+    printf '[toolchain-timing] --------  docker run (container start + entrypoint + cmd + teardown)  --------\n' >&2
     ec=0
     docker run "${DOCKER_ARGS[@]}" bash "$@" || ec=$?
     if [[ $ec -ge 128 ]]; then
@@ -217,7 +247,9 @@ case "${command}" in
     exit 0
     ;;
   run)
+    t0=$(_ts_ms)
     ensure_image
+    _step "$(( $(_ts_ms) - t0 ))" "ensure_image"
     # Require project_dir as first non-flag arg
     if [[ $# -lt 2 ]]; then
       usage
@@ -225,7 +257,10 @@ case "${command}" in
     fi
     project_dir="$(abs_path "$1")"
     shift
+    t0=$(_ts_ms)
     build_docker_args "${project_dir}"
+    _step "$(( $(_ts_ms) - t0 ))" "build_docker_args (total)"
+    printf '[toolchain-timing] --------  docker run (container start + entrypoint + cmd + teardown)  --------\n' >&2
     exec docker run "${DOCKER_ARGS[@]}" "$@"
     ;;
   versions)

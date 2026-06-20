@@ -211,12 +211,14 @@ QDRANT_PORT
 `docker/Dockerfile` 基于 Ubuntu 24.04 构建，主要步骤包括：
 
 - 安装基础系统依赖
+- 通过 apt 安装 vim
 - 安装 git、curl、build tools 等工具
 - 从 GitHub Release 安装 `gh`
 - 安装 mise
 - 复制 `docker/mise-global.toml` 到镜像内工具链配置位置
 - 复制 `docker/mise-china.toml` 作为国内网络模式下的 mise 下载源配置
 - 执行 `mise install`（python, node, pnpm, uv, opencode）
+- 预创建 opencode 数据目录 `/opt/mise/opencode` 并设置权限
 - 设置 `/workspace` 为工作目录
 - 使用 `docker/entrypoint.sh` 作为入口
 
@@ -283,7 +285,7 @@ qdrant_data
 - 删除数据卷
 - 删除工具链容器
 - 删除工具链镜像
-- 尝试移除 `agent-network`
+- 断开 `agent-network` 上的残留端点，然后移除网络
 - 检查是否还有残留容器
 
 ## 多实例设计

@@ -235,6 +235,8 @@ python3 smoke_test.py
 
 - 容器内工具版本
 - 本机目录和 `/workspace` 是否同步
+- 容器内端口可通过宿主机 localhost 访问
+- opencode 和 vim 在容器内可执行
 - `up` / `down` / `clean` 的清理行为
 - Qdrant 数据卷保留策略
 - 热启动耗时
