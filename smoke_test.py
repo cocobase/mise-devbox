@@ -149,7 +149,7 @@ def test_02_mount_bidirectional_sync():
             check=False,
             timeout=30,
         )
-        container_content = (result.stdout + result.stderr).strip()
+        container_content = result.stdout.strip()
         if container_content != marker_content:
             print(f"  ❌ Host → Container sync failed")
             print(f"     Expected: {marker_content}")
