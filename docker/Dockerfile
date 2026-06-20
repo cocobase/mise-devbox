@@ -122,7 +122,7 @@ RUN if [ "$USE_CHINA_MIRROR" = "true" ]; then \
 RUN --mount=type=cache,target=/opt/mise-cache,uid=1000,gid=1000,mode=0777 \
     mise trust /opt/toolchain/.mise.toml \
     && mise trust /opt/mise-config/config.toml \
-    && MISE_VERBOSE=1 mise install python node pnpm uv \
+    && MISE_VERBOSE=1 mise install python node pnpm uv opencode \
     && mise reshim
 
 # ==========================================
@@ -135,7 +135,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates curl xz-utils libssl3 sudo \
+        ca-certificates curl xz-utils libssl3 sudo vim \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy tools from builder
@@ -143,6 +143,10 @@ COPY --from=builder /usr/local/bin/mise /usr/local/bin/mise
 COPY --from=builder --chown=developer:developer /opt/mise /opt/mise
 COPY --from=builder --chown=developer:developer /opt/mise-config /opt/mise-config
 COPY --from=builder --chown=developer:developer /opt/toolchain /opt/toolchain
+
+# Pre-create opencode data directory at build time so runtime entrypoint does not
+# need an expensive recursive chmod across ~18,000 mise-installed files.
+RUN mkdir -p /opt/mise/opencode && chmod 777 /opt/mise/opencode && chmod a+w /opt/mise
 
 WORKDIR /workspace
 COPY --chown=developer:developer docker/entrypoint.sh /usr/local/bin/toolchain-entrypoint

@@ -57,8 +57,15 @@ else
 fi
 
 echo "[harness-clean] Verifying networks..."
-if docker network ls | grep -q "agent-network"; then
+if docker network ls --format '{{.Name}}' | grep -qx "agent-network"; then
+  endpoints=$(docker network inspect agent-network \
+    --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || true)
+  for ep in $endpoints; do
+    echo "[harness-clean] Disconnecting endpoint: ${ep}"
+    docker network disconnect -f agent-network "${ep}" >/dev/null 2>&1 || true
+  done
   docker network rm agent-network >/dev/null 2>&1 || true
+
   if docker network ls --format '{{.Name}}' | grep -qx "agent-network"; then
     echo "[harness-clean] ⚠️  agent-network still exists."
   else

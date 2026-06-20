@@ -8,6 +8,8 @@
 - Node.js
 - pnpm
 - uv
+- opencode（AI 编码助手）
+- vim
 - git
 - GitHub CLI
 - Redis
@@ -162,6 +164,8 @@ python --version
 node --version
 pnpm --version
 uv --version
+opencode --version
+vim --version
 git --version
 gh --version
 ```

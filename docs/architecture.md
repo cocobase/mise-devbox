@@ -9,7 +9,7 @@
 | 层级 | 作用 |
 |---|---|
 | mise 全局任务 | 给用户提供统一命令入口 |
-| Docker 工具链镜像 | 封装 Python、Node.js、pnpm、uv、git、gh 和 mise |
+| Docker 工具链镜像 | 封装 Python、Node.js、pnpm、uv、opencode、vim、git、gh 和 mise |
 | Docker Compose 基础设施 | 启动 Redis 和 Qdrant |
 
 默认工具链镜像名称：
@@ -216,11 +216,11 @@ QDRANT_PORT
 - 安装 mise
 - 复制 `docker/mise-global.toml` 到镜像内工具链配置位置
 - 复制 `docker/mise-china.toml` 作为国内网络模式下的 mise 下载源配置
-- 执行 `mise install`
+- 执行 `mise install`（python, node, pnpm, uv, opencode）
 - 设置 `/workspace` 为工作目录
 - 使用 `docker/entrypoint.sh` 作为入口
 
-镜像内置 `/opt/mise-config/config.toml` 作为全局工具版本配置，内容来自 `docker/mise-global.toml`。这样即使挂载的业务项目没有自己的 `.mise.toml`，也可以直接使用 Python、Node.js、pnpm 和 uv。
+镜像内置 `/opt/mise-config/config.toml` 作为全局工具版本配置，内容来自 `docker/mise-global.toml`。这样即使挂载的业务项目没有自己的 `.mise.toml`，也可以直接使用 Python、Node.js、pnpm、uv 和 opencode。
 
 ## Docker Compose 基础设施
 

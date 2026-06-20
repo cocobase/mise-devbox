@@ -215,6 +215,8 @@ python: Python 3.12.13
 node: v22.22.3
 pnpm: 11.2.2
 uv: uv 0.11.16
+opencode: 1.x.x
+vim: VIM - Vi IMproved 9.x
 git: git version ...
 gh: gh version ...
 ```

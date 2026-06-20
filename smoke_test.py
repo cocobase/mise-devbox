@@ -10,6 +10,7 @@ AI-Agent Harness Smoke Test
 5. 深度清理：clean 后网络和镜像无残留
 6. 热启动计时：镜像已构建、infra 已运行时 up ≤ 5s
 7. 端口访问：容器内 8000-9999 端口可通过宿主机 localhost 访问
+8. 工具可用：opencode 和 vim 在容器内可执行
 """
 
 import os
@@ -122,6 +123,8 @@ def test_01_container_tool_versions():
     ok = True
     for tool, expected_ver in expected.items():
         expected_clean = expected_ver.replace("'", "").replace('"', "")
+        if expected_clean == "latest":
+            continue
         if expected_clean in output:
             print(f"  ✅ {tool}: {expected_clean}")
         else:
@@ -226,6 +229,26 @@ def test_03_port_publish_to_host():
                 proc.wait(timeout=10)
 
 
+def test_09_opencode_and_vim_available():
+    """opencode 和 vim 在容器内可执行。"""
+    print("\n[TEST 09] OpenCode and vim available in container")
+    checks = [
+        ("opencode", "opencode --version"),
+        ("vim",     "vim --version"),
+    ]
+    ok = True
+    for name, cmd in checks:
+        result = run(f"scripts/toolchain run . {cmd}", check=False, timeout=60)
+        if result.returncode != 0:
+            print(f"  ❌ {name}: exit code {result.returncode}")
+            print(f"     stderr: {result.stderr}")
+            ok = False
+        else:
+            first_line = (result.stdout + result.stderr).strip().split("\n")[0]
+            print(f"  ✅ {name}: {first_line}")
+    return ok
+
+
 def test_03_down_removes_containers():
     """scripts/task-harness-up → scripts/task-harness-down 后，无业务容器残留。"""
     print("\n[TEST 04] Standard down removes harness containers")
@@ -273,6 +296,12 @@ def test_05_clean_removes_network_and_image():
         attached = network_container_ids(NETWORK_NAME)
         if attached:
             print(f"     Attached containers: {' '.join(attached)}")
+        result = run(
+            f"docker network inspect {NETWORK_NAME} --format '{{{{json .Containers}}}}'",
+            check=False,
+        )
+        if result.stdout.strip():
+            print(f"     Network endpoints: {result.stdout.strip()}")
         return False
     print(f"  ✅ {NETWORK_NAME} removed")
 
@@ -299,13 +328,28 @@ def test_06_hot_start_timing():
 
     times = []
     for i in range(3):
-        start = time.perf_counter()
+        stage_times = {}
+
+        t0 = time.perf_counter()
         run("scripts/check-host", check=False, capture_output=True)
+        stage_times["check-host"] = time.perf_counter() - t0
+
+        t0 = time.perf_counter()
         run(f"docker image inspect {IMAGE_NAME}", check=False, capture_output=True)
+        stage_times["image-inspect"] = time.perf_counter() - t0
+
+        t0 = time.perf_counter()
         run("scripts/toolchain run . true", check=False, capture_output=True, timeout=30)
-        elapsed = time.perf_counter() - start
-        times.append(elapsed)
-        print(f"  Run {i+1}: {elapsed:.2f}s")
+        stage_times["toolchain-run"] = time.perf_counter() - t0
+
+        total = sum(stage_times.values())
+        times.append(total)
+        print(
+            f"  Run {i+1}: {total:.2f}s "
+            f"(check-host: {stage_times['check-host']:.2f}s, "
+            f"image-inspect: {stage_times['image-inspect']:.2f}s, "
+            f"toolchain-run: {stage_times['toolchain-run']:.2f}s)"
+        )
 
     avg = sum(times) / len(times)
     median = sorted(times)[len(times) // 2]
@@ -368,6 +412,7 @@ def main():
         test_01_container_tool_versions,
         test_02_mount_bidirectional_sync,
         test_03_port_publish_to_host,
+        test_09_opencode_and_vim_available,
         test_03_down_removes_containers,
         test_04_down_preserves_volume,
         test_06_hot_start_timing,
