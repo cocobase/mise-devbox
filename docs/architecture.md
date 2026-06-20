@@ -120,6 +120,7 @@ scripts/toolchain versions .
 - 挂载 pnpm 和 uv 缓存
 - 透传常见 AI 服务环境变量
 - 如果 `agent-network` 存在，则加入该网络
+- 默认把宿主机 `127.0.0.1:8000-8099` 映射到容器 `8000-8099`
 
 ## `/workspace` 的底层实现
 
@@ -305,6 +306,8 @@ mise run harness-shell
 
 - `agent-redis`
 - `agent-qdrant`
+
+默认端口发布会占用宿主机 `127.0.0.1:8000-8099`。如果多个工具链容器需要同时运行并对宿主机开放服务，应为后启动的容器设置不同的 `HARNESS_PORT_RANGE`，或设置 `HARNESS_PUBLISH_PORTS=0` 关闭端口发布。需要完整 `8000-9999` 窗口时，可以显式设置 `HARNESS_PORT_RANGE=8000-9999`。
 
 ## 直接使用 Docker image
 

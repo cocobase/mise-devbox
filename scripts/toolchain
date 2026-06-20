@@ -9,6 +9,9 @@ source "${SCRIPT_DIR}/lib/common.sh"
 # Configuration
 # -----------------------------------------------------------------------------
 IMAGE="${TOOLCHAIN_IMAGE}"
+HARNESS_PORT_RANGE="${HARNESS_PORT_RANGE:-8000-8099}"
+HARNESS_PORT_BIND="${HARNESS_PORT_BIND:-127.0.0.1}"
+HARNESS_PUBLISH_PORTS="${HARNESS_PUBLISH_PORTS:-1}"
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -121,6 +124,16 @@ add_network_arg() {
   fi
 }
 
+# Publish the default development port range to localhost for apps started from
+# /workspace, while allowing advanced users to disable or narrow the mapping.
+add_port_args() {
+  if [[ "${HARNESS_PUBLISH_PORTS}" == "0" ]]; then
+    return 0
+  fi
+
+  DOCKER_ARGS+=("-p" "${HARNESS_PORT_BIND}:${HARNESS_PORT_RANGE}:${HARNESS_PORT_RANGE}")
+}
+
 # Add interactive TTY flags when running in a terminal.
 add_tty_args() {
   if [[ -t 0 && -t 1 ]]; then
@@ -136,6 +149,7 @@ build_docker_args() {
   add_auth_mounts
   add_cache_mounts
   add_network_arg
+  add_port_args
   add_tty_args
   DOCKER_ARGS+=("${IMAGE}")
 }

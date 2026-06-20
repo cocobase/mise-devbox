@@ -9,6 +9,7 @@ AI-Agent Harness Smoke Test
 4. 数据持久化：标准 down 后 Qdrant 数据卷保留
 5. 深度清理：clean 后网络和镜像无残留
 6. 热启动计时：镜像已构建、infra 已运行时 up ≤ 5s
+7. 端口访问：容器内 8000-9999 端口可通过宿主机 localhost 访问
 """
 
 import os
@@ -16,6 +17,7 @@ import subprocess
 import sys
 import time
 import tomllib
+import urllib.request
 from pathlib import Path
 
 # -----------------------------------------------------------------------------
@@ -172,9 +174,61 @@ def test_02_mount_bidirectional_sync():
         cleanup_marker()
 
 
+def test_03_port_publish_to_host():
+    """容器内 8000-9999 端口可通过宿主机 localhost 访问。"""
+    print("\n[TEST 03] Container development port published to host")
+    port = 8765
+    proc = None
+
+    try:
+        env = os.environ.copy()
+        env["HARNESS_PORT_RANGE"] = f"{port}-{port}"
+        proc = subprocess.Popen(
+            [
+                "scripts/toolchain",
+                "run",
+                ".",
+                "python",
+                "-m",
+                "http.server",
+                str(port),
+                "--bind",
+                "0.0.0.0",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            env=env,
+        )
+
+        url = f"http://127.0.0.1:{port}/"
+        for _ in range(30):
+            if proc.poll() is not None:
+                print("  ❌ Container HTTP server exited before it was reachable")
+                return False
+            try:
+                with urllib.request.urlopen(url, timeout=1) as response:
+                    if response.status == 200:
+                        print(f"  ✅ {url} reachable from host")
+                        return True
+            except Exception:
+                time.sleep(1)
+
+        print(f"  ❌ {url} was not reachable from host")
+        return False
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=10)
+
+
 def test_03_down_removes_containers():
     """scripts/task-harness-up → scripts/task-harness-down 后，无业务容器残留。"""
-    print("\n[TEST 03] Standard down removes harness containers")
+    print("\n[TEST 04] Standard down removes harness containers")
 
     ensure_infra_running()
     run("scripts/task-harness-down", check=False)
@@ -191,7 +245,7 @@ def test_03_down_removes_containers():
 
 def test_04_down_preserves_volume():
     """Qdrant 数据卷在标准 down 后仍然保留。"""
-    print("\n[TEST 04] Standard down preserves qdrant_data volume")
+    print("\n[TEST 05] Standard down preserves qdrant_data volume")
     ensure_infra_running()
     run("scripts/task-harness-down", check=False)
 
@@ -207,7 +261,7 @@ def test_04_down_preserves_volume():
 
 def test_05_clean_removes_network_and_image():
     """docker network ls 中无孤立的 agent-network（深度清理后）。"""
-    print("\n[TEST 05] Deep clean removes network and image")
+    print("\n[TEST 06] Deep clean removes network and image")
     ensure_infra_running()
     run("scripts/task-harness-clean", check=False)
 
@@ -234,7 +288,7 @@ def test_05_clean_removes_network_and_image():
 
 def test_06_hot_start_timing():
     """热启动测试：镜像已构建、基础设施已运行，执行本地脚本链路应该 ≤ 15s。"""
-    print("\n[TEST 06] Hot-start timing (target: ≤ 15s)")
+    print("\n[TEST 07] Hot-start timing (target: ≤ 15s)")
 
     result = run(f"docker image inspect {IMAGE_NAME}", check=False)
     if result.returncode != 0:
@@ -266,7 +320,7 @@ def test_06_hot_start_timing():
 
 def test_07_host_profile_generation():
     """验证 check-host 能正确生成宿主机画像 TOML 文件。"""
-    print("\n[TEST 07] Host profile generation")
+    print("\n[TEST 08] Host profile generation")
 
     # Run check-host to generate/refresh profile
     result = run("scripts/check-host --yes --refresh", check=False)
@@ -313,6 +367,7 @@ def main():
         test_07_host_profile_generation,
         test_01_container_tool_versions,
         test_02_mount_bidirectional_sync,
+        test_03_port_publish_to_host,
         test_03_down_removes_containers,
         test_04_down_preserves_volume,
         test_06_hot_start_timing,

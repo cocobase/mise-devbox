@@ -117,6 +117,9 @@ TOOLCHAIN_IMAGE = "${TOOLCHAIN_IMAGE}"
 REDIS_URL = "redis://agent-redis:6379/0"
 QDRANT_HOST = "agent-qdrant"
 QDRANT_PORT = "6333"
+HARNESS_PORT_RANGE = "8000-8099"
+HARNESS_PORT_BIND = "127.0.0.1"
+HARNESS_PUBLISH_PORTS = "1"
 
 [tasks.harness-check]
 description = "Check host environment for AI-Agent Harness"

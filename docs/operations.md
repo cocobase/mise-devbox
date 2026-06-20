@@ -118,6 +118,40 @@ exit
 
 `harness-shell` 更适合镜像和基础设施已经准备好之后快速进入。
 
+## 访问容器内开发服务
+
+工具链容器默认把容器内 `8000-8099` 端口发布到宿主机 `127.0.0.1:8000-8099`。在 `/workspace` 里启动应用时，请让应用监听 `0.0.0.0`，并优先把端口保持在 `8000-8099` 区间。
+
+示例：
+
+```bash
+python -m http.server 8000 --bind 0.0.0.0
+```
+
+宿主机访问：
+
+```text
+http://localhost:8000
+```
+
+如果端口区间冲突，可以在启动前缩小范围：
+
+```bash
+HARNESS_PORT_RANGE=9000-9099 mise run harness-shell
+```
+
+如果 Docker 运行时可以稳定承载更大的端口窗口，可以显式发布完整开发端口区间：
+
+```bash
+HARNESS_PORT_RANGE=8000-9999 mise run harness-shell
+```
+
+如果当前任务不需要宿主机访问容器端口，可以关闭端口发布：
+
+```bash
+HARNESS_PUBLISH_PORTS=0 mise run harness-shell
+```
+
 ## 停止与清理
 
 停止后台服务并保留数据：
