@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // 默认模型：DeepSeek V4 Pro
+  "model": "deepseek/deepseek-v4-pro",
+  "provider": {
+    "deepseek": {
+      "options": {
+        // 从环境变量 DEEPSEEK_API_KEY 读取，不硬编码
+        "apiKey": "{env:DEEPSEEK_API_KEY}"
+      }
+    }
+  }
+}
