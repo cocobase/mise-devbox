@@ -348,7 +348,7 @@ main() {
     # 执行安装步骤
     detect_system
     check_dependencies
-    check_existing_homebrew "$1"
+    check_existing_homebrew "${1:-}"
     setup_mirror_environment
     install_homebrew
     configure_shell_environment
