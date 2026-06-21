@@ -48,7 +48,7 @@ Homebrew is the baseline package manager for this toolchain. Install it first to
 
 Run this command from the project root:
 
-  scripts/install-brew
+  scripts/install_homebrew.sh
 EOF
 }
 

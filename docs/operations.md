@@ -49,7 +49,7 @@ mise run harness-check
 Homebrew 是本工具链最基础的包管理工具，缺失时 `check-host` 会提示安装并阻断后续流程。可使用脚本通过清华源安装：
 
 ```bash
-scripts/install-brew
+scripts/install_homebrew.sh
 ```
 
 `check-host` 使用 Bash/awk 读写宿主机画像 TOML，不依赖 Python 3.11+ 或 `tomli`。`python3` 仅作为后续扩展的可选工具存在，缺失时不会阻塞宿主机画像生成。

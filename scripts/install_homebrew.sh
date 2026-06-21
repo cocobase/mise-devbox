@@ -2,7 +2,7 @@
 # Homebrew 安装脚本 - 使用清华大学镜像源
 # 基于 https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/ 的官方指南
 
-set -e  # 遇到错误立即退出
+set -euo pipefail
 
 # 颜色定义
 RED='\033[0;31m'
@@ -134,17 +134,17 @@ check_existing_homebrew() {
     print_step "检查现有 Homebrew 安装"
     
     if command -v brew &> /dev/null; then
-        local brew_version=$(brew --version | head -n1)
-        local brew_prefix=$(brew --prefix)
-        print_warning "检测到已安装的 Homebrew"
-        print_info "版本: $brew_version"
-        print_info "安装路径: $brew_prefix"
-        
-        echo
-        read -p "是否要继续安装？这可能会覆盖现有配置 (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_info "安装已取消"
+        if [[ "${1:-}" == "--force" ]]; then
+            local brew_version
+            brew_version=$(brew --version | head -n1)
+            local brew_prefix
+            brew_prefix=$(brew --prefix)
+            print_warning "检测到已安装的 Homebrew，但 --force 已指定，将重新安装"
+            print_info "当前版本: $brew_version"
+            print_info "安装路径: $brew_prefix"
+        else
+            brew --version | head -n1
+            printf "Homebrew is already installed.\n"
             exit 0
         fi
     else
@@ -160,11 +160,15 @@ setup_mirror_environment() {
     export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
     export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
     export HOMEBREW_INSTALL_FROM_API=1
+    export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
+    export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
     
     print_success "已设置镜像源环境变量:"
     print_info "HOMEBREW_BREW_GIT_REMOTE=$HOMEBREW_BREW_GIT_REMOTE"
     print_info "HOMEBREW_CORE_GIT_REMOTE=$HOMEBREW_CORE_GIT_REMOTE"
     print_info "HOMEBREW_INSTALL_FROM_API=$HOMEBREW_INSTALL_FROM_API"
+    print_info "HOMEBREW_API_DOMAIN=$HOMEBREW_API_DOMAIN"
+    print_info "HOMEBREW_BOTTLE_DOMAIN=$HOMEBREW_BOTTLE_DOMAIN"
 }
 
 # 安装 Homebrew
@@ -173,8 +177,9 @@ install_homebrew() {
     
     print_info "正在从清华镜像源下载安装脚本..."
     
-    # 创建临时目录
-    local temp_dir=$(mktemp -d)
+    # 创建临时目录（trap 方式确保退出时自动清理）
+    temp_dir=$(mktemp -d)
+    trap 'rm -rf "$temp_dir"' EXIT
     cd "$temp_dir"
     
     # 从镜像源克隆安装脚本
@@ -201,10 +206,6 @@ install_homebrew() {
         print_error "找不到安装脚本"
         exit 1
     fi
-    
-    # 清理临时文件
-    cd - > /dev/null
-    rm -rf "$temp_dir"
     
     print_success "Homebrew 安装完成"
 }
@@ -347,7 +348,7 @@ main() {
     # 执行安装步骤
     detect_system
     check_dependencies
-    check_existing_homebrew
+    check_existing_homebrew "$1"
     setup_mirror_environment
     install_homebrew
     configure_shell_environment
