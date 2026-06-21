@@ -333,8 +333,162 @@ show_next_steps() {
     print_info "镜像源地址: https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/"
 }
 
+# 显示帮助信息
+show_help() {
+    cat <<'EOF'
+用法: install_homebrew.sh [选项]
+
+使用清华大学镜像源安装 Homebrew 包管理器。
+
+选项:
+  --help, -h     显示此帮助信息并退出
+  --speed        测试多个镜像源的下载速度并退出
+  --force        即使 Homebrew 已安装也强制重新安装
+
+示例:
+  install_homebrew.sh                     # 正常安装
+  install_homebrew.sh --force             # 强制重装
+  install_homebrew.sh --speed             # 测速 (不安装)
+  install_homebrew.sh --help              # 查看帮助
+EOF
+    exit 0
+}
+
+# 格式化字节数为人类可读
+format_speed() {
+    local bps=$1
+    if [[ $bps -ge 1048576 ]]; then
+        awk -v v="$bps" 'BEGIN { printf "%.2f MB/s", v / 1048576 }'
+    elif [[ $bps -ge 1024 ]]; then
+        awk -v v="$bps" 'BEGIN { printf "%.2f KB/s", v / 1024 }'
+    else
+        echo "${bps} B/s"
+    fi
+}
+
+# 测试镜像源下载速度
+test_mirror_speed() {
+    echo -e "${GREEN}"
+    echo "=================================================="
+    echo "     Homebrew 镜像源下载速度测试"
+    echo "=================================================="
+    echo -e "${NC}"
+    echo
+
+    if ! command -v curl &>/dev/null; then
+        print_error "测速需要 curl，请先安装 curl"
+        exit 1
+    fi
+
+    local mirrors=(
+        "清华大学 (TUNA)|https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api/formula.json"
+        "官方源 (formulae.brew.sh)|https://formulae.brew.sh/api/formula.json"
+    )
+
+    local results=()
+    local max_name_len=0
+
+    print_info "测试中，请稍候..."
+    echo
+
+    for entry in "${mirrors[@]}"; do
+        local name="${entry%%|*}"
+        local url="${entry##*|}"
+
+        [[ ${#name} -gt $max_name_len ]] && max_name_len=${#name}
+
+        print_info "正在测试: $name ..."
+
+        local download_result
+        download_result=$(curl -o /dev/null -s -w '%{speed_download} %{time_total} %{size_download}' --max-time 10 --connect-timeout 5 "$url" 2>/dev/null) || true
+        local raw_speed
+        raw_speed=$(echo "$download_result" | awk '{print $1}')
+        local time_total
+        time_total=$(echo "$download_result" | awk '{print $2}')
+        local size_download
+        size_download=$(echo "$download_result" | awk '{print $3}')
+
+        if [[ -z "$raw_speed" || "$raw_speed" == "0" || "$raw_speed" == "0.000" ]]; then
+            results+=("${name}|失败|-|-|-")
+            continue
+        fi
+
+        local speed_bps
+        speed_bps=$(printf "%.0f" "$raw_speed")
+        local speed_human
+        speed_human=$(format_speed "$speed_bps")
+
+        local size_kb
+        if [[ -n "$size_download" && "$size_download" != "0" ]]; then
+            size_kb=$(awk -v v="$size_download" 'BEGIN { printf "%.1f KB", v / 1024 }')
+        else
+            size_kb="-"
+        fi
+
+        local time_s
+        if [[ -n "$time_total" ]]; then
+            time_s=$(printf "%.2fs" "$time_total")
+        else
+            time_s="-"
+        fi
+
+        results+=("${name}|${speed_human}|${time_s}|${size_kb}")
+    done
+
+    echo
+    printf "%-${max_name_len}s  %12s  %8s  %8s\n" "镜像源" "下载速度" "耗时" "大小"
+    printf "%-${max_name_len}s  %12s  %8s  %8s\n" \
+        "$(printf '━%.0s' $(seq 1 $max_name_len))" \
+        "━━━━━━━━━━━━" "━━━━━━━━" "━━━━━━━━"
+
+    for result in "${results[@]}"; do
+        local name="${result%%|*}"
+        local rest="${result#*|}"
+        local speed="${rest%%|*}"
+        rest="${rest#*|}"
+        local time="${rest%%|*}"
+        local size="${rest##*|}"
+
+        local speed_color="${NC}"
+        if [[ "$speed" == "失败" ]]; then
+            speed_color="${RED}"
+        elif [[ "$name" == *"(TUNA)"* ]]; then
+            speed_color="${GREEN}"
+        fi
+
+        printf "${speed_color}%-${max_name_len}s${NC}  %12s  %8s  %8s\n" "$name" "$speed" "$time" "$size"
+    done
+
+    echo
+    print_info "推荐使用速度最快的镜像源"
+    print_info "当前脚本默认使用: 清华大学 (TUNA) 镜像源"
+}
+
 # 主函数
 main() {
+    local force_flag=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --help|-h)
+                show_help
+                ;;
+            --speed)
+                test_mirror_speed
+                exit 0
+                ;;
+            --force)
+                force_flag="--force"
+                shift
+                ;;
+            *)
+                print_error "未知选项: $1"
+                echo "使用 --help 查看帮助信息"
+                exit 1
+                ;;
+        esac
+    done
+
     echo -e "${GREEN}"
     echo "=================================================="
     echo "    Homebrew 安装脚本 (清华镜像源版本)"
@@ -348,7 +502,7 @@ main() {
     # 执行安装步骤
     detect_system
     check_dependencies
-    check_existing_homebrew "${1:-}"
+    check_existing_homebrew "$force_flag"
     setup_mirror_environment
     install_homebrew
     configure_shell_environment
